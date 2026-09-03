@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Sky That Made You — Birth Chart Print</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── Полуночное стекло (грамматика AuthKit) + тепло натальных подач ──
+     канвас: #05070c (из подачи «Золото-контраст»)
+     hairline: тёплый фрост rgba(240,231,216,.12) — вместо их сине-белого
+     единственный акцент: МЕДЬ #c07a4a (из «Медного цветения») — только CTA
+     elevation: inset-хайлайт + внутренний glow + тёмный ореол, никаких drop-shadow */
+  :root {
+    --canvas: #0c1512;
+    --ink: #f0f4ef;            /* тёплый аналог их frost-glow */
+    --body: #d9d0bd;
+    --muted: #a89f8d;
+    --helper: #7d776a;
+    --hairline: rgba(230,239,232,.11);
+    --frost: rgba(230,239,232,.04);
+    --copper: #c07a4a;
+    --copper-deep: #8f5330;
+    --glass-top: rgba(244,233,208,.18);
+    --glass-glow: rgba(214,187,148,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--canvas); color: var(--body);
+    font: 300 16px/1.6 'IBM Plex Sans', system-ui, sans-serif;
+    letter-spacing: -0.01em; overflow-x: hidden;
+  }
+  .stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .8; }
+  .halo {  /* conic-spotlight сверху — их приём, прогретый под медь */
+    position: absolute; inset: -20% 0 auto 0; height: 90vh; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(58% 42% at 50% 0%, rgba(192,146,98,.16), transparent 70%),
+      conic-gradient(from 180deg at 50% -6%, transparent 42%, rgba(214,180,138,.20) 49%,
+                     rgba(233,210,178,.30) 50%, rgba(214,180,138,.20) 51%, transparent 58%);
+    filter: blur(2px);
+  }
+  .wrap { position: relative; z-index: 1; max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 110px 0 0; }
+
+  /* eyebrow: капс с трекингом, обрамлён тающими линиями */
+  .eyebrow {
+    display: flex; align-items: center; gap: 20px; justify-content: center;
+    font: 400 13px/1.2 'IBM Plex Mono', monospace; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .eyebrow::before, .eyebrow::after {
+    content: ""; height: 1px; width: 120px;
+  }
+  .eyebrow::before { background: linear-gradient(90deg, transparent, var(--hairline)); }
+  .eyebrow::after  { background: linear-gradient(90deg, var(--hairline), transparent); }
+
+  h1, h2 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; color: var(--ink); }
+  h1 {
+    margin: 22px auto 14px; text-align: center; font-size: clamp(44px, 7vw, 84px);
+    line-height: 1.04; max-width: 14ch; letter-spacing: .01em;
+    background: linear-gradient(180deg, #f6efdf 20%, #d8b98c 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .standfirst { text-align: center; max-width: 56ch; margin: 0 auto; color: var(--muted); font-size: 17px; }
+
+  .cta-row { display: flex; gap: 14px; justify-content: center; margin: 34px 0 10px; }
+  .btn {
+    border-radius: 4px; padding: 11px 22px; font: 500 14px/1 'IBM Plex Sans', sans-serif;
+    text-decoration: none; letter-spacing: .01em;
+  }
+  .btn-copper { background: var(--copper); color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255,235,215,.35), 0 6px 22px rgba(192,122,74,.28); }
+  .btn-ghost { background: var(--frost); color: var(--ink); box-shadow: inset 0 0 0 1px var(--hairline); }
+
+  /* хиро-веер: три стеклянные пластины с реальными рендерами */
+  .fan { position: relative; display: flex; justify-content: center; align-items: flex-end;
+          gap: 0; margin: 64px 0 0; min-height: 560px; }
+  .plate {
+    background: rgba(10,17,14,.94); border-radius: 16px; padding: 14px;
+    box-shadow: inset 0 1px 1px var(--glass-top), inset 0 24px 48px var(--glass-glow),
+                0 24px 48px rgba(0,0,0,.5);
+  }
+  .plate img { display: block; border-radius: 8px; width: 100%; height: auto; }
+  .plate figcaption { text-align: center; padding: 12px 0 4px;
+    font: 400 11px/1.2 'IBM Plex Mono', monospace; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--helper); }
+  .plate-l { width: 300px; transform: rotate(-5deg) translate(46px, 12px); z-index: 1; }
+  .plate-c { width: 380px; z-index: 2; }
+  .plate-r { width: 300px; transform: rotate(5deg) translate(-46px, 12px); z-index: 1; }
+
+  h2 { text-align: center; font-size: clamp(30px, 4vw, 44px); margin: 20px auto 12px; max-width: 24ch; }
+  .sub { text-align: center; color: var(--muted); max-width: 58ch; margin: 0 auto; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 48px; }
+  .card {
+    border-radius: 16px; padding: 26px; background: var(--frost);
+    box-shadow: inset 0 1px 1px rgba(244,233,208,.12), inset 0 24px 48px rgba(214,187,148,.04),
+                0 24px 32px rgba(4,5,9,.6);
+  }
+  .card .n { font: 400 12px/1 'IBM Plex Mono', monospace; letter-spacing: .2em; color: var(--copper); }
+  .card h3 { font: 500 21px/1.25 'Cormorant Garamond', Georgia, serif; color: var(--ink); margin: 12px 0 8px; }
+  .card p { font-size: 14.5px; color: var(--muted); }
+
+  .gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 48px; }
+  .gallery .plate { padding: 10px; }
+
+  .price { text-align: center; margin-top: 44px; }
+  .price .from { font: 400 13px/1 'IBM Plex Mono', monospace; letter-spacing: .2em;
+                  text-transform: uppercase; color: var(--helper); }
+  .price .amount { font: 500 54px/1.1 'Cormorant Garamond', Georgia, serif; color: var(--ink); margin: 10px 0 22px; }
+
+  footer { margin-top: 130px; padding: 36px 0 44px; text-align: center;
+            font: 400 11px/1.8 'IBM Plex Mono', monospace; letter-spacing: .16em;
+            text-transform: uppercase; color: var(--helper);
+            border-top: 1px solid rgba(240,231,216,.07); }
+  @media (max-width: 900px) {
+    .steps, .gallery { grid-template-columns: 1fr 1fr; }
+    .plate-l, .plate-r { display: none; }
+    .plate-c { width: min(86vw, 380px); }
+  }
+
+  /* ── конфигуратор (03.09.2026): та же стеклянная карта, поля в моно-грамматике ── */
+  .cfg { max-width: 720px; margin: 48px auto 0; }
+  .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 22px; }
+  .cfg label { display: block; font: 400 12px/1.2 'IBM Plex Mono', monospace;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--helper); }
+  .cfg input {
+    display: block; width: 100%; margin-top: 8px; padding: 11px 12px;
+    font: 400 15px/1.2 'IBM Plex Sans', sans-serif; color: var(--ink);
+    background: var(--frost); border: 0; border-radius: 6px;
+    box-shadow: inset 0 0 0 1px var(--hairline); outline: none;
+  }
+  .cfg input:focus { box-shadow: inset 0 0 0 1px var(--copper); }
+  .cfg input[type=date], .cfg input[type=time] { color-scheme: dark; }
+  .cfg-place { grid-column: 1 / -1; position: relative; }
+  .cfg-list { position: absolute; left: 0; right: 0; z-index: 5; margin-top: 4px;
+    background: #101915; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--hairline),
+    0 18px 40px rgba(0,0,0,.55); overflow: hidden; }
+  .cfg-suggest { padding: 10px 14px; font: 400 14px/1.35 'IBM Plex Sans', sans-serif;
+    color: var(--body); cursor: pointer; letter-spacing: 0; text-transform: none; }
+  .cfg-suggest:hover { background: rgba(192,122,74,.14); color: var(--ink); }
+  .cfg-echo { margin-top: 7px; font: 400 12px/1.4 'IBM Plex Mono', monospace;
+    letter-spacing: .04em; text-transform: none; color: var(--copper); min-height: 17px; }
+  .cfg-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .cfg-opt {
+    padding: 9px 16px; font: 400 13.5px/1.2 'IBM Plex Sans', sans-serif; color: var(--body);
+    background: var(--frost); border: 0; border-radius: 6px; cursor: pointer;
+    box-shadow: inset 0 0 0 1px var(--hairline);
+  }
+  .cfg-opt .f-price { color: var(--helper); margin-left: 6px; }
+  .cfg-opt.active { color: var(--ink); box-shadow: inset 0 0 0 1px var(--copper),
+    0 0 18px rgba(192,122,74,.18); }
+  .cfg-buy { margin-top: 30px; text-align: center; }
+  .cfg-price { font: 500 40px/1.1 'Cormorant Garamond', Georgia, serif; color: var(--ink);
+    margin-bottom: 16px; }
+  .cfg-buy .btn { display: inline-block; border: 0; cursor: pointer; font-size: 15px;
+    padding: 13px 28px; }
+  .cfg-note { margin-top: 12px; font: 400 12.5px/1.5 'IBM Plex Sans', sans-serif;
+    color: var(--helper); }
+  .cfg-gate { margin: 18px auto 0; max-width: 560px; padding: 16px 18px; text-align: left;
+    font-size: 14.5px; line-height: 1.6; color: var(--body); border-radius: 10px;
+    background: var(--frost); box-shadow: inset 0 0 0 1px var(--copper); }
+  .cfg-gate strong { color: var(--ink); font-weight: 500; }
+  .cfg-gate-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .cfg-gate-row .btn { padding: 9px 18px; font-size: 13.5px; }
+  @media (max-width: 640px) { .cfg-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<svg class="stars" viewBox="0 0 1600 2400" preserveAspectRatio="xMidYMin slice"><circle cx="759" cy="1450" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="118" cy="743" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="329" cy="278" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="281" cy="1438" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="342" cy="222" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="906" cy="1169" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="192" cy="2090" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="858" cy="1100" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="196" cy="1980" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="863" cy="1525" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1163" cy="1393" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1038" cy="245" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="862" cy="276" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1525" cy="698" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1473" cy="1188" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1320" cy="1905" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="682" cy="1832" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="723" cy="987" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1586" cy="264" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1518" cy="1877" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1031" cy="870" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1600" cy="1730" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="771" cy="54" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="810" cy="2376" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1243" cy="1952" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="8" cy="526" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="760" cy="401" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1303" cy="1872" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1111" cy="1875" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1349" cy="607" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1381" cy="2268" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="824" cy="148" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1346" cy="1576" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="743" cy="1474" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1055" cy="2242" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1459" cy="2032" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1127" cy="1771" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1039" cy="290" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1589" cy="38" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="161" cy="1725" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="567" cy="976" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1281" cy="1637" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="120" cy="445" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="392" cy="1285" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="857" cy="1724" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="443" cy="1055" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1425" cy="869" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="222" cy="445" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1097" cy="28" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="234" cy="594" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="322" cy="1169" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="341" cy="1692" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1181" cy="76" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1476" cy="274" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="29" cy="266" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="787" cy="759" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="971" cy="2324" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="598" cy="641" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="390" cy="348" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="230" cy="1049" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="599" cy="903" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1282" cy="488" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1454" cy="150" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1236" cy="819" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="139" cy="1257" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1452" cy="1446" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="678" cy="1087" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="100" cy="481" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="42" cy="155" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1467" cy="131" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1160" cy="1289" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="981" cy="330" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1293" cy="1729" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1392" cy="602" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="320" cy="1150" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="71" cy="1877" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="124" cy="237" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="68" cy="1847" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1520" cy="717" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1592" cy="27" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1262" cy="2374" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1285" cy="1027" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1236" cy="2346" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="886" cy="2148" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="431" cy="2244" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="494" cy="1419" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1291" cy="319" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1169" cy="175" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="366" cy="884" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="920" cy="475" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1044" cy="1779" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1216" cy="848" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="635" cy="1359" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="433" cy="2043" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1481" cy="1185" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="230" cy="1986" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="304" cy="299" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="984" cy="1085" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="794" cy="2183" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1291" cy="2281" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1142" cy="1007" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="955" cy="23" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1206" cy="588" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="416" cy="1395" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="522" cy="1639" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="301" cy="1847" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="704" cy="1366" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1248" cy="1408" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="697" cy="393" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="696" cy="2137" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="888" cy="1733" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1009" cy="1745" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="559" cy="1495" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1483" cy="1422" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="617" cy="1598" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="828" cy="1416" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1096" cy="1648" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1590" cy="340" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="89" cy="1402" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1058" cy="1976" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="41" cy="259" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="567" cy="988" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="784" cy="259" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="674" cy="1130" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1006" cy="177" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="628" cy="447" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1320" cy="2008" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="9" cy="123" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1421" cy="1208" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="328" cy="1798" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="349" cy="271" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="865" cy="515" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="452" cy="418" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="346" cy="704" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="1156" cy="1146" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1374" cy="1042" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1488" cy="1874" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1117" cy="189" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1251" cy="2161" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="0" cy="2133" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="552" cy="405" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="983" cy="128" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1203" cy="251" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="326" cy="2215" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1545" cy="1337" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1306" cy="367" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1483" cy="2254" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="889" cy="1975" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1244" cy="794" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="11" cy="20" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1557" cy="1074" r="1.3" fill="#e8ddc8" opacity="0.6"/><circle cx="918" cy="48" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1474" cy="1296" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1237" cy="462" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="1295" cy="393" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="993" cy="1199" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="359" cy="1876" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="747" cy="556" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1460" cy="543" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="251" cy="165" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="1359" cy="2135" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1184" cy="476" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1307" cy="360" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1084" cy="1114" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="1518" cy="1469" r="1.0" fill="#e8ddc8" opacity="0.45"/><circle cx="97" cy="1831" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="988" cy="201" r="0.8" fill="#e8ddc8" opacity="0.35"/><circle cx="29" cy="2029" r="1.8" fill="#e8ddc8" opacity="0.85"/><circle cx="248" cy="1934" r="0.6" fill="#e8ddc8" opacity="0.25"/><circle cx="1515" cy="1182" r="0.8" fill="#e8ddc8" opacity="0.35"/></svg>
+<div class="halo"></div>
+<div class="wrap">
+
+  <section style="padding-top:96px">
+    <div class="eyebrow">Introducing</div>
+    <h1>The sky that made you</h1>
+    <p class="standfirst">Your birth chart, drawn on the real night sky of <em style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:1.18em;color:var(--ink)">the minute you were born</em>.
+    Every star computed for your date, your time, your town — and your planets in bloom above them.</p>
+    <div class="cta-row">
+      <a class="btn btn-copper" href="#create">Create yours</a>
+      <a class="btn btn-ghost" href="#how">How it works</a>
+    </div>
+    <div class="fan">
+      <figure class="plate plate-l"><img src="assets/fan-edinburgh.jpg" alt="Birth chart in the Gold Midnight finish — Edinburgh, 1987"><figcaption>Gold · midnight — Edinburgh</figcaption></figure>
+      <figure class="plate plate-c"><img src="assets/fan-london.jpg" alt="Birth chart in the Copper bloom finish — London, 1991"><figcaption>Copper bloom — London</figcaption></figure>
+      <figure class="plate plate-r"><img src="assets/fan-rome.jpg" alt="Birth chart in the Garden on paper finish — Rome, 1997"><figcaption>Garden on paper — Rome</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="eyebrow">How it works</div>
+    <h2>Three fields. One sky. Yours.</h2>
+    <p class="sub">No account, no questionnaire — the same quiet ritual as a star map, with an astronomer’s engine underneath.</p>
+    <div class="steps">
+      <div class="card"><div class="n">01</div><h3>Tell us the minute</h3>
+        <p>Date, time and birthplace. The rising sign turns a degree every four minutes — so the minute matters, and we honour it.</p></div>
+      <div class="card"><div class="n">02</div><h3>We compute the heavens</h3>
+        <p>Sun, Moon and eight planets placed to a tenth of a degree, checked against JPL ephemerides. The star field behind them is the real sky over your birthplace.</p></div>
+      <div class="card"><div class="n">03</div><h3>Printed like an heirloom</h3>
+        <p>Giclée on 200 gsm fine-art paper, framed by hand in the UK. Dispatched in 2–4 working days.</p></div>
+    </div>
+  </section>
+
+  <section id="design">
+    <div class="eyebrow">Choose your night</div>
+    <h2>Four rooms of the same sky</h2>
+    <p class="sub">Every finish is the same honest chart — filled petals for the aspects between your planets, a leaf for each of the ten.</p>
+    <div class="gallery">
+      <figure class="plate"><img src="assets/gold-contrast.jpg" alt=""><figcaption>Gold · Midnight</figcaption></figure>
+      <figure class="plate"><img src="assets/copper-bloom.jpg" alt=""><figcaption>Copper bloom</figcaption></figure>
+      <figure class="plate"><img src="assets/garden-paper.jpg" alt=""><figcaption>Garden on paper</figcaption></figure>
+      <figure class="plate"><img src="assets/bimetal.jpg" alt=""><figcaption>Gold &amp; silver</figcaption></figure>
+    </div>
+    <div class="price">
+      <div class="from">Prints from</div>
+      <div class="amount">£34.99</div>
+      <a class="btn btn-copper" href="#create">Create yours</a>
+    </div>
+  </section>
+
+  <section id="create">
+    <div class="eyebrow">Create yours</div>
+    <h2>The minute, the place, the name.</h2>
+    <p class="sub">Everything we need to draw your sky. Before anything is printed,
+    a preview lands in your inbox — we’ll fix anything.</p>
+    <div class="cfg card">
+      <div class="cfg-grid">
+        <label>Date of birth
+          <input type="date" id="ns-date" value="1994-06-19"></label>
+        <label>Time (as close as you know)
+          <input type="time" id="ns-time" value="08:45"></label>
+        <label class="cfg-place">Birthplace
+          <input type="text" id="ns-place" placeholder="City, country" autocomplete="off">
+          <div id="ns-place-list" class="cfg-list" hidden></div>
+          <div id="ns-place-echo" class="cfg-echo"></div></label>
+        <label>Name on the chart (optional)
+          <input type="text" id="ns-name" maxlength="40" placeholder="e.g. Eliana Grace"></label>
+      </div>
+      <div class="cfg-row" id="ns-themes"></div>
+      <div class="cfg-row" id="ns-formats"></div>
+      <div class="cfg-row" id="ns-colors" hidden></div>
+      <div class="cfg-row" id="ns-sizes"></div>
+      <div class="cfg-buy">
+        <div class="cfg-price" id="ns-price">£34.99</div>
+        <button class="btn btn-copper" id="ns-buy" type="button">Create my chart — £34.99</button>
+        <div class="cfg-note">✓&nbsp;Free preview by email before we print · Framed by hand in the UK · Dispatched in 2–4 working days</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Charts computed from JPL-verified ephemerides · Printed &amp; framed in the UK ·
+    A sister studio of the night-sky atelier
+  </footer>
+</div>
+<script src="assets/ortus.js"></script>
+</body>
+</html>
