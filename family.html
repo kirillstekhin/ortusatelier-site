@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Constellations | Ortus Atelier</title>
+<meta name="description" content="Every member of the family as their true birth constellation — real stars, one sky, joined by a single thread. Printed and framed by hand in the UK. From £34.99.">
+<meta property="og:title" content="Ortus Atelier — Family Constellations">
+<meta property="og:description" content="One sky for the whole family: each person's real zodiac constellation, joined by a single thread.">
+<meta property="og:image" content="https://ortusatelier.com/assets/fam-wilsons.jpg">
+<meta property="og:url" content="https://ortusatelier.com/family.html">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1512'/%3E%3Ccircle cx='16' cy='16' r='8.5' fill='none' stroke='%23c07a4a' stroke-width='1.6'/%3E%3Ccircle cx='16' cy='7.5' r='2.2' fill='%23c07a4a'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --canvas: #0c1512; --ink: #f0f4ef; --body: #d9d0bd; --muted: #a89f8d;
+    --helper: #7d776a; --hairline: rgba(230,239,232,.11); --frost: rgba(230,239,232,.04);
+    --copper: #c07a4a; --glass-top: rgba(244,233,208,.18); --glass-glow: rgba(214,187,148,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--canvas); color: var(--body);
+    font: 300 16px/1.6 'IBM Plex Sans', system-ui, sans-serif; letter-spacing: -0.01em;
+    overflow-x: hidden; }
+  .halo { position: absolute; inset: -20% 0 auto 0; height: 90vh; z-index: 0; pointer-events: none;
+    background: radial-gradient(58% 42% at 50% 0%, rgba(192,146,98,.16), transparent 70%);
+    filter: blur(2px); }
+  .wrap { position: relative; z-index: 1; max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 100px 0 0; }
+  .eyebrow { display: flex; align-items: center; gap: 20px; justify-content: center;
+    font: 400 13px/1.2 'IBM Plex Mono', monospace; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--muted); }
+  .eyebrow::before, .eyebrow::after { content: ""; height: 1px; width: 120px; }
+  .eyebrow::before { background: linear-gradient(90deg, transparent, var(--hairline)); }
+  .eyebrow::after  { background: linear-gradient(90deg, var(--hairline), transparent); }
+  h1, h2 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; color: var(--ink); }
+  h1 { margin: 22px auto 14px; text-align: center; font-size: clamp(40px, 6.4vw, 76px);
+    line-height: 1.06; max-width: 16ch;
+    background: linear-gradient(180deg, #f6efdf 20%, #d8b98c 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .standfirst { text-align: center; max-width: 56ch; margin: 0 auto; color: var(--muted); font-size: 17px; }
+  .cta-row { display: flex; gap: 14px; justify-content: center; margin: 34px 0 10px; }
+  .btn { border-radius: 4px; padding: 11px 22px; font: 500 14px/1 'IBM Plex Sans', sans-serif;
+    text-decoration: none; letter-spacing: .01em; }
+  .btn-copper { background: var(--copper); color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255,235,215,.35), 0 6px 22px rgba(192,122,74,.28); }
+  .btn-ghost { background: var(--frost); color: var(--ink); box-shadow: inset 0 0 0 1px var(--hairline); }
+  .fan { display: flex; justify-content: center; align-items: flex-end; margin: 60px 0 0; min-height: 540px; }
+  .plate { background: rgba(10,17,14,.94); border-radius: 16px; padding: 14px;
+    box-shadow: inset 0 1px 1px var(--glass-top), inset 0 24px 48px var(--glass-glow),
+                0 24px 48px rgba(0,0,0,.5); }
+  .plate img { display: block; border-radius: 8px; width: 100%; height: auto; }
+  .plate figcaption { text-align: center; padding: 12px 0 4px;
+    font: 400 11px/1.2 'IBM Plex Mono', monospace; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--helper); }
+  .plate-l { width: 300px; transform: rotate(-5deg) translate(46px, 12px); z-index: 1; }
+  .plate-c { width: 380px; z-index: 2; }
+  .plate-r { width: 300px; transform: rotate(5deg) translate(-46px, 12px); z-index: 1; }
+  h2 { text-align: center; font-size: clamp(30px, 4vw, 44px); margin: 20px auto 12px; max-width: 26ch; }
+  .sub { text-align: center; color: var(--muted); max-width: 58ch; margin: 0 auto; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 48px; }
+  .card { border-radius: 16px; padding: 26px; background: var(--frost);
+    box-shadow: inset 0 1px 1px rgba(244,233,208,.12), inset 0 24px 48px rgba(214,187,148,.04),
+                0 24px 32px rgba(4,5,9,.6); }
+  .card .n { font: 400 12px/1 'IBM Plex Mono', monospace; letter-spacing: .2em; color: var(--copper); }
+  .card h3 { font: 500 21px/1.25 'Cormorant Garamond', Georgia, serif; color: var(--ink); margin: 12px 0 8px; }
+  .card p { font-size: 14.5px; color: var(--muted); }
+  /* конфигуратор — грамматика лендинга */
+  .cfg { max-width: 720px; margin: 48px auto 0; }
+  .cfg label { display: block; font: 400 12px/1.2 'IBM Plex Mono', monospace;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--helper); }
+  .cfg input { display: block; width: 100%; margin-top: 8px; padding: 11px 12px;
+    font: 400 15px/1.2 'IBM Plex Sans', sans-serif; color: var(--ink);
+    background: var(--frost); border: 0; border-radius: 6px;
+    box-shadow: inset 0 0 0 1px var(--hairline); outline: none; }
+  .cfg input:focus { box-shadow: inset 0 0 0 1px var(--copper); }
+  .cfg input[type=date] { color-scheme: dark; }
+  .mrow { display: grid; grid-template-columns: 1fr 168px 34px; gap: 10px; margin-top: 10px;
+    align-items: center; }
+  .mrow input { margin-top: 0; }
+  .mrow .rm { height: 40px; border: 0; border-radius: 6px; background: var(--frost);
+    color: var(--helper); cursor: pointer; box-shadow: inset 0 0 0 1px var(--hairline);
+    font-size: 16px; }
+  .mrow .rm:hover { color: var(--ink); }
+  .addrow { margin-top: 12px; background: none; border: 0; color: var(--copper);
+    font: 400 13.5px/1 'IBM Plex Sans', sans-serif; cursor: pointer; padding: 6px 0; }
+  .cfg-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .cfg-opt { padding: 9px 16px; font: 400 13.5px/1.2 'IBM Plex Sans', sans-serif; color: var(--body);
+    background: var(--frost); border: 0; border-radius: 6px; cursor: pointer;
+    box-shadow: inset 0 0 0 1px var(--hairline); }
+  .cfg-opt .f-price { color: var(--helper); margin-left: 6px; }
+  .cfg-opt.active { color: var(--ink); box-shadow: inset 0 0 0 1px var(--copper),
+    0 0 18px rgba(192,122,74,.18); }
+  .cfg-buy { margin-top: 30px; text-align: center; }
+  .cfg-price { font: 500 40px/1.1 'Cormorant Garamond', Georgia, serif; color: var(--ink);
+    margin-bottom: 16px; }
+  .cfg-buy .btn { display: inline-block; border: 0; cursor: pointer; font-size: 15px;
+    padding: 13px 28px; }
+  .cfg-note { margin-top: 12px; font: 400 12.5px/1.5 'IBM Plex Sans', sans-serif; color: var(--helper); }
+  .cfg-gate { margin: 18px auto 0; max-width: 600px; padding: 16px 18px; text-align: left;
+    font-size: 14.5px; line-height: 1.6; color: var(--body); border-radius: 10px;
+    background: var(--frost); box-shadow: inset 0 0 0 1px var(--copper); }
+  .cfg-gate strong { color: var(--ink); font-weight: 500; }
+  .cfg-gate code { display: block; margin: 10px 0; padding: 10px 12px; border-radius: 6px;
+    background: rgba(0,0,0,.35); color: var(--ink); font: 400 13px/1.5 'IBM Plex Mono', monospace;
+    word-break: break-word; }
+  .cfg-gate-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .cfg-gate-row .btn { padding: 9px 18px; font-size: 13.5px; }
+  footer { margin-top: 130px; padding: 36px 0 44px; text-align: center;
+    font: 400 11px/1.9 'IBM Plex Mono', monospace; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--helper);
+    border-top: 1px solid rgba(240,231,216,.07); }
+  footer a { color: inherit; }
+  @media (max-width: 900px) {
+    .steps { grid-template-columns: 1fr; }
+    .plate-l, .plate-r { display: none; }
+    .plate-c { width: min(86vw, 380px); }
+    .mrow { grid-template-columns: 1fr 150px 34px; }
+  }
+</style>
+</head>
+<body>
+<div class="halo"></div>
+<div class="wrap">
+
+  <section style="padding-top:96px">
+    <div class="eyebrow">Ortus Atelier</div>
+    <h1>One sky. The whole family.</h1>
+    <p class="standfirst">Each of you as your true birth constellation — real stars, drawn from
+    real astronomy — joined by <em style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-size:1.18em;color:var(--ink)">a single thread</em>.
+    Two of you or six of you, one night to keep.</p>
+    <div class="cta-row">
+      <a class="btn btn-copper" href="#create">Create yours</a>
+      <a class="btn btn-ghost" href="/">Birth charts →</a>
+    </div>
+    <div class="fan">
+      <figure class="plate plate-l"><img src="assets/fam-ninatom.jpg" alt="Family constellations for a couple — midnight finish"><figcaption>Midnight — a couple</figcaption></figure>
+      <figure class="plate plate-c"><img src="assets/fam-wilsons.jpg" alt="Family constellations for four — copper night finish"><figcaption>Copper night — family of four</figcaption></figure>
+      <figure class="plate plate-r"><img src="assets/fam-fairbairns.jpg" alt="Family constellations for six — paper finish"><figcaption>Paper — three generations</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="eyebrow">How it works</div>
+    <h2>A name and a birthday each. We do the rest.</h2>
+    <div class="steps">
+      <div class="card"><div class="n">01</div><h3>Name the family</h3>
+        <p>Two to six people — a couple, the kids, three generations. Just first names and
+        birthdays; we find each person’s true zodiac constellation.</p></div>
+      <div class="card"><div class="n">02</div><h3>Real stars, named</h3>
+        <p>Every constellation is drawn from the real sky — its brightest star ringed and named,
+        Regulus to Spica, exactly where astronomy puts it.</p></div>
+      <div class="card"><div class="n">03</div><h3>One thread joins them</h3>
+        <p>A single line arcs from star to star through the family — then it’s giclée-printed,
+        framed by hand in the UK, and previewed to you by email before print.</p></div>
+    </div>
+  </section>
+
+  <section id="create">
+    <div class="eyebrow">Create yours</div>
+    <h2>The family, star by star.</h2>
+    <p class="sub">First names and birthdays — the sky knows the rest. A preview lands in your
+    inbox before anything is printed.</p>
+    <div class="cfg card">
+      <label>Family name on the poster
+        <input type="text" id="fc-family" maxlength="40" placeholder="e.g. The Wilsons"></label>
+      <div style="margin-top:22px">
+        <label>The family (2–6 people)</label>
+        <div id="fc-members"></div>
+        <button type="button" class="addrow" id="fc-add">+ Add a person</button>
+      </div>
+      <div class="cfg-row" id="fc-themes"></div>
+      <div class="cfg-row" id="fc-formats"></div>
+      <div class="cfg-row" id="fc-colors" hidden></div>
+      <div class="cfg-row" id="fc-sizes"></div>
+      <div class="cfg-buy">
+        <div class="cfg-price" id="fc-price">£34.99</div>
+        <button class="btn btn-copper" id="fc-buy" type="button">Create our sky — £34.99</button>
+        <div class="cfg-note">✓&nbsp;Free preview by email before we print · Framed by hand in the UK · Dispatched in 2–4 working days</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Ortus Atelier · a Shopcienty Ltd studio · from the makers of
+    <a href="https://www.skythatnight.com">Sky, That Night</a><br>
+    Charts computed from real astronomical data · Printed &amp; framed in the UK<br>
+    <a href="terms.html">Terms</a> · <a href="delivery.html">Delivery &amp; Returns</a> ·
+    <a href="privacy.html">Privacy</a>
+  </footer>
+</div>
+<script src="assets/family.js"></script>
+</body>
+</html>
