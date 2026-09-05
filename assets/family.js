@@ -11,8 +11,16 @@ const PRICES = {
   classic: { '3040': 69.99, '4050': 79.99, '5070': 89.99 },
 };
 
-/* Заполнить после создания family-линков (ключ ortus-setup-2): fmt → URL. */
-const PAYMENT_LINKS = {};
+/* platform/family/stripe_links.json (ключ ortus-setup-2, 05.09) — 6 live-линков;
+   кастом-поля members(req)+dedication, redirect на thank-you вшит при создании. */
+const PAYMENT_LINKS = {
+  PRINT3040:   'https://buy.stripe.com/14A6oI5EO3Q13YD4lq7g40o',
+  PRINT4050:   'https://buy.stripe.com/9B600k0kudqB2Uz7xC7g40p',
+  PRINT5070:   'https://buy.stripe.com/aFa9AUd7gfyJ1Qvg487g40q',
+  CLASSIC3040: 'https://buy.stripe.com/eVq6oI6IS72d9iXdW07g40r',
+  CLASSIC4050: 'https://buy.stripe.com/14A4gA0ku72dfHl5pu7g40s',
+  CLASSIC5070: 'https://buy.stripe.com/aFa14ogjs72dgLp19e7g40t',
+};
 
 const THEMES = [
   { id: 'coppernight', label: 'Copper night' },
