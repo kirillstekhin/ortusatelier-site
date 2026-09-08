@@ -105,7 +105,7 @@ function attachGeocode() {
 
   const preferred = rs => rs.find(r => r.country_code === 'GB') || rs[0];
 
-  async function search(q) {
+  async function lookup(q) {
     const url = extra => `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en&format=json${extra}`;
     const get = async u => { try { const r = await fetch(u); return (await r.json()).results || []; } catch (e) { return []; } };
     const [uk, world] = await Promise.all([get(url('&countryCode=GB')), get(url(''))]);
@@ -116,6 +116,18 @@ function attachGeocode() {
       seen.add(k); out.push(r);
     }
     return out.slice(0, 6);
+  }
+
+  /* ⚠ «CITY, UK» ЛОМАЛ ПРИВЯЗКУ (08.09.2026, найдено прогоном прода). open-meteo ищет по
+     имени места: «Harrogate, UK», «Bristol, UK» → ПУСТО («London, England» — находит).
+     Плейсхолдер сам подсказывает «City, country», и самый естественный британский ввод
+     молча оставлял место непривязанным → «Birthplace first», продажи нет. Нет выдачи —
+     повторяем по части до запятой; UK-first в lookup сам ставит британский вариант первым.
+     Тот же фикс в starmap.js (SKN). */
+  async function search(q) {
+    let out = await lookup(q);
+    if (!out.length && q.includes(',')) out = await lookup(q.split(',')[0].trim());
+    return out;
   }
 
   input.addEventListener('input', () => {
