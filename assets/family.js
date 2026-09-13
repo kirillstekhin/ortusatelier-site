@@ -252,8 +252,13 @@ function confirmSummary(members, onKeep) {
   gateBox.innerHTML =
     `<strong>${esc(fam)}</strong> — ${members.out.length} of you:` +
     `<code>${esc(familyLine())}</code>` +
-    'At checkout, one field asks for exactly this family line — we’ve copied it to your ' +
-    'clipboard, just paste it there. Every name and birthday right?' +
+    /* ⛔ТЕКСТ ПЕРЕПИСАН 13.09.2026. Раньше здесь стояло «на оплате одно поле просит эту же
+       строку — мы скопировали её в буфер, вставьте туда»: так работали Payment Links, где
+       покупатель вводил семью ВТОРОЙ раз руками. Теперь персонализация уходит на сервер до
+       оплаты, и никакого поля на чекауте нет — прогон через форму показал у сессии ноль
+       custom_fields. Старый текст отправлял бы покупателя искать несуществующее поле. */
+    'We have saved this exactly as written — nothing to retype at checkout. ' +
+    'Every name and birthday right?' +
     '<div class="cfg-gate-row">' +
     '<button type="button" class="btn btn-copper g-keep">Yes — to the checkout</button>' +
     '<button type="button" class="btn btn-ghost g-change">Let me fix something</button></div>';
@@ -294,12 +299,11 @@ function attachControls() {
       return;
     }
     confirmSummary(members, fam => {
-      const line = familyLine();
-      try { navigator.clipboard.writeText(line); } catch (e) {}
-      /* ⛔Ссылку выбирает СЕРВЕР по доверенной сетке — PAYMENT_LINKS здесь больше не
-         используется. Браузер не решает, за сколько платить. */
+      /* ⛔БУФЕР ОБМЕНА БОЛЬШЕ НЕ ТРОГАЕМ. Копирование строки семьи было нужно, пока её
+         приходилось вставлять в поле Stripe. Поля нет — значит это просто затирание
+         чужого буфера без всякой причины.
+         ⛔Ссылку выбирает СЕРВЕР по доверенной сетке. Браузер не решает, за сколько платить. */
       goToCheckout(document.getElementById('fc-buy'), fam);
-
     });
   });
 }
