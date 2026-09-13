@@ -193,13 +193,23 @@ export async function onRequestPost({ request, env }) {
   if (payload.length > MAX_BODY) return json({ error: "too_large", limit: MAX_BODY }, 413);
 
   // ⛔ЗАПИСЬ ПЕРВОЙ. Ссылку отдаём только если дизайн реально лёг в хранилище.
+  let put;
   try {
-    await env.DESIGNS.put(`designs/${rec.id}.json`, payload, {
+    put = await env.DESIGNS.put(`designs/${rec.id}.json`, payload, {
       httpMetadata: { contentType: "application/json" },
       onlyIf: { etagDoesNotMatch: "*" },        // ⛔перезапись существующего ID запрещена
     });
   } catch (e) {
     console.log("design store write failed", rec.id, e && e.name);   // ⚠️без перс.данных
+    return json({ error: "storage_unavailable" }, 503);
+  }
+  // ⛔R2 ПРИ НЕВЫПОЛНЕННОМ `onlyIf` НЕ БРОСАЕТ ИСКЛЮЧЕНИЕ, А ВОЗВРАЩАЕТ null.
+  // Найдено живой проверкой 13.09: два POST на один ключ дали 200 и ССЫЛКУ ОБА раза,
+  // хотя вторая запись не сохранилась — в R2 осталась первая. То есть покупатель ушёл бы
+  // платить за дизайн, которого в хранилище нет в том виде, в каком он его подтвердил.
+  // Данные не пострадали, но try/catch этого не видел: проверять надо ВОЗВРАЩЁННОЕ значение.
+  if (!put) {
+    console.log("design store write skipped (precondition failed)", rec.id);
     return json({ error: "storage_unavailable" }, 503);
   }
 
