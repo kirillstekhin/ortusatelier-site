@@ -76,12 +76,28 @@ export function validate(rec) {
   if (!(key in ORTUS)) bad.push(`format=${JSON.stringify(fmt)} не из сетки Ortus`);
   else if (m && m[10] !== fmt) bad.push(`format=${JSON.stringify(fmt)} не совпадает с форматом в design_code (${m[10]})`);
 
-  const place = (((rec && rec.place) || {}).name || "").trim();
+  const pl = (rec && rec.place) || null;
+  const place = ((pl && pl.name) || "").trim();
   if (product === "natal") {
     if (!place || DASHES.includes(place)) bad.push("натальной нужно настоящее название места, а не прочерк");
     // ⚠️[...] — по кодовым ТОЧКАМ: .length в JS считает единицы UTF-16 и на суррогатных
     //   парах разошёлся бы с len() в Python. Пределы обязаны совпадать в обоих.
     else if ([...place].length > LIMITS.place) bad.push(`место длиннее ${LIMITS.place} символов`);
+  }
+  /* ⛔НЕПУСТАЯ СТРОКА — ЕЩЁ НЕ СОГЛАСОВАННОСТЬ. Координаты записи обязаны совпасть с теми,
+     что зашиты в design-код: иначе на макете подпись одного города, а звёзды другого.
+     ⚠️Сверка НАЗВАНИЯ с координатами (геокодер) здесь не делается намеренно — это сетевой
+     вызов в пути записи; её делает fulfil.place_mismatch перед печатью. */
+  if (m && pl) {
+    const lat = pl.lat, lon = pl.lon;
+    if (lat === undefined || lat === null || lon === undefined || lon === null) bad.push("у места нет координат");
+    else {
+      const wantLat = Number(m[5]) * (m[4] === "N" ? 1 : -1);
+      const wantLon = Number(m[7]) * (m[6] === "E" ? 1 : -1);
+      const gotLat = Math.round(lat * 10000), gotLon = Math.round(lon * 10000);
+      if (gotLat !== wantLat || gotLon !== wantLon)
+        bad.push(`координаты места ${lat},${lon} не совпадают с design-кодом (${wantLat / 10000},${wantLon / 10000})`);
+    }
   }
 
   const ded = ((rec && rec.dedication) || "").trim();
