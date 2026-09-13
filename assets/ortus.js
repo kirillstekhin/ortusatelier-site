@@ -12,15 +12,12 @@ const PRICES = {
   classic: { '3040': 69.99, '4050': 79.99, '5070': 89.99 },
 };
 
-/* platform/natal/stripe_links.json (root@e298b0e) — 6 live-линков ключа ortus-setup. */
-const PAYMENT_LINKS = {
-  PRINT3040:   'https://buy.stripe.com/14AbJ24AKfyJan1dW07g40i',
-  PRINT4050:   'https://buy.stripe.com/28E9AU5EO72d8eTdW07g40j',
-  PRINT5070:   'https://buy.stripe.com/eVqdRaaZ84U59iX6ty7g40k',
-  CLASSIC3040: 'https://buy.stripe.com/aFa14ogjs86hgLpdW07g40l',
-  CLASSIC4050: 'https://buy.stripe.com/00wbJ27MWaep0Mr2di7g40m',
-  CLASSIC5070: 'https://buy.stripe.com/3cI00kc3cbit3YDf047g40n',
-};
+/* ⛔ТАБЛИЦА БОЕВЫХ PAYMENT LINKS УБРАНА 13.09.2026. Она уже не использовалась — адрес
+   оплаты возвращает сервер, — но лежала в коде живыми ссылками. Мёртвый код с боевыми
+   ссылками опаснее отсутствующего: любой откат «на прежнее поведение» молча увёл бы
+   покупателя платить МИМО хранилища дизайнов, то есть без сохранённой персонализации.
+   Старые оплаты по этим ссылкам по-прежнему обрабатываются — таблицей на СЕРВЕРЕ
+   (`design_store.ORTUS['live']`, поле `link`), а не здесь. */
 
 /* Темы = NT2-токены (fulfil.py THEME_TOKENS натальной). Порядок = галерея лендинга. */
 const THEMES = [
