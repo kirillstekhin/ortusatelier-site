@@ -68,6 +68,9 @@ function designCode() {
 function price() { return PRICES[state.frameType][state.size]; }
 
 function refresh() {
+  /* ⚠️Любое изменение формы поднимает версию: ответ сервера на СТАРУЮ версию не должен
+     открывать чекаут. Сюда приходят дата, время, тема, формат, размер, цвет и место. */
+  bumpVersion();
   state.tz = tzOffsetHours(state.iana, state.dateStr, state.timeStr);
   const p = `£${price().toFixed(2)}`;
   document.getElementById('ns-price').textContent = p;
@@ -132,7 +135,7 @@ function attachGeocode() {
 
   input.addEventListener('input', () => {
     clearTimeout(timer);
-    placeBound = false; showEcho();
+    placeBound = false; bumpVersion(); showEcho();
     const q = input.value.trim();
     if (q.length < 2) { list.hidden = true; return; }
     timer = setTimeout(async () => {
@@ -178,6 +181,104 @@ function attachGeocode() {
 
 /* ── гейт-сводка перед оплатой: всегда, одно нажатие ── */
 let gateBox = null;
+
+/* ═══ ХРАНИЛИЩЕ ДИЗАЙНОВ: подтверждённая версия формы → ID → оплата ═══
+   Проект: platform/DESIGN_STORE_SPEC.md. Близнец этого блока живёт в family.js —
+   ⚠️правки держать синхронными, как у starmap.js/moon.js.
+
+   ⛔ЗАЧЕМ. Покупатель вводил место и имя ВТОРОЙ раз на странице оплаты: Payment Links не
+   умеют предзаполнять custom fields, а в client_reference_id персонализация не влезает.
+   Теперь форма сохраняет дизайн на сервере и уходит по ссылке, которую вернул сервер.
+
+   ⛔МОЛЧАЛИВОГО ОТКАТА НА СТАРЫЙ ЧЕКАУТ НЕТ. Ошибка проверки возвращает к исправлению
+   данных, сбой — предлагает повторить. Уйти платить по старой ссылке «как раньше» нельзя:
+   тогда персонализация не сохранится, а покупатель об этом не узнает. */
+let designInFlight = false;
+let formVersion = 0;                 // ⚠️растёт на КАЖДОЕ изменение формы
+let problemBox = null;
+
+function bumpVersion() { formVersion++; }
+
+function showProblem(text) {
+  const anchor = document.getElementById('ns-buy');
+  if (!problemBox) {
+    problemBox = document.createElement('p');
+    problemBox.className = 'cfg-note';
+    problemBox.style.color = '#e0a94a';
+    anchor.insertAdjacentElement('afterend', problemBox);
+  }
+  problemBox.textContent = text;
+  problemBox.hidden = false;
+  problemBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function clearProblem() { if (problemBox) problemBox.hidden = true; }
+
+const DRAFT_KEY = 'ortus_natal_draft';
+function saveDraft() {
+  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch (e) {}
+}
+function restoreDraft() {
+  /* ⚠️Чтобы возврат из Stripe (или «назад») не стирал введённое. */
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+    if (!d) return false;
+    Object.assign(state, d);
+    return true;
+  } catch (e) { return false; }
+}
+
+function designPayload() {
+  return {
+    product: 'natal',
+    design_code: designCode(),
+    format: formatToken(),
+    place: { name: state.place, lat: state.lat, lon: state.lon },
+    dedication: state.name || null,
+  };
+}
+
+async function goToCheckout(btn) {
+  if (designInFlight) return;                       // ②двойной клик не плодит переходы
+  const myVersion = formVersion;                    // ③версия на момент подтверждения
+  designInFlight = true;
+  clearProblem();
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Saving your design…';
+  saveDraft();
+  let res, data;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    res = await fetch('/api/design', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(designPayload()), signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    data = await res.json().catch(() => ({}));
+  } catch (e) {
+    designInFlight = false; btn.disabled = false; btn.textContent = label;
+    showProblem(e.name === 'AbortError'
+      ? 'Saving your design took too long. Everything you typed is still here — press the button again.'
+      : 'We could not reach our server. Everything you typed is still here — press the button again.');
+    return;                                         // ④данные целы ⑤ссылки нет
+  }
+  designInFlight = false; btn.disabled = false; btn.textContent = label;
+
+  if (myVersion !== formVersion) {
+    /* ③пока шёл запрос, форму изменили — ответ относится к СТАРОЙ версии, чекаут не открываем */
+    showProblem('You changed something while we were saving. Check the details and press the button again.');
+    return;
+  }
+  if (!res.ok || !data.id || !data.payment_link) {
+    showProblem(data && data.problems && data.problems.length
+      ? data.problems.join(' · ')
+      : 'We could not save your design, so we have not sent you to payment. Please try again.');
+    return;
+  }
+  window.location.href = `${data.payment_link}?client_reference_id=${encodeURIComponent(data.id)}`;
+}
+
 function confirmSummary(onKeep) {
   const anchor = document.getElementById('ns-buy');
   if (!gateBox) {
@@ -207,7 +308,10 @@ function confirmSummary(onKeep) {
 function attachControls() {
   document.getElementById('ns-date').addEventListener('change', e => { if (e.target.value) { state.dateStr = e.target.value; refresh(); } });
   document.getElementById('ns-time').addEventListener('change', e => { if (e.target.value) { state.timeStr = e.target.value; refresh(); } });
-  document.getElementById('ns-name').addEventListener('input', e => { state.name = e.target.value.slice(0, 40); });
+  document.getElementById('ns-name').addEventListener('input', e => {
+    state.name = e.target.value.slice(0, 40);
+    bumpVersion();                 // ⚠️имя идёт мимо refresh() — версию поднимаем здесь
+  });
 
   const wireGroup = (sel, key, dataAttr) => document.querySelectorAll(sel).forEach(b =>
     b.addEventListener('click', () => {
@@ -230,11 +334,7 @@ function attachControls() {
         input.placeholder = 'Birthplace first — the stars depend on it';
         return;
       }
-      confirmSummary(() => {
-        const link = PAYMENT_LINKS[formatToken()];
-        const code = designCode();
-        window.location.href = `${link}?client_reference_id=${encodeURIComponent(code)}`;
-      });
+      confirmSummary(() => goToCheckout(document.getElementById('ns-buy')));
     }, 300);
   });
 }
@@ -252,5 +352,22 @@ document.addEventListener('DOMContentLoaded', () => {
     `<button type="button" class="cfg-opt${c === 'gold' ? ' active' : ''}" data-color="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join('');
   attachGeocode();
   attachControls();
+  /* ⑥ВОЗВРАТ ИЗ STRIPE (или «назад») НЕ ДОЛЖЕН СТИРАТЬ ВВЕДЁННОЕ. Черновик кладётся
+     в sessionStorage перед уходом на оплату и поднимается здесь. ⚠️Место считается
+     привязанным только если в черновике есть КООРДИНАТЫ — иначе гейт места попросит
+     подтвердить заново, и правильно: название без координат ничего не гарантирует. */
+  if (restoreDraft()) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    set('ns-date', state.dateStr); set('ns-time', state.timeStr);
+    set('ns-place', state.place); set('ns-name', state.name);
+    placeBound = !!(state.lat != null && state.lon != null && state.place);
+    ['#ns-themes .cfg-opt|theme|theme', '#ns-formats .cfg-opt|frameType|frametype',
+     '#ns-sizes .cfg-opt|size|size', '#ns-colors .cfg-opt|frameColor|color'].forEach(spec => {
+      const [sel, key, attr] = spec.split('|');
+      document.querySelectorAll(sel).forEach(b =>
+        b.classList.toggle('active', b.dataset[attr] === String(state[key])));
+    });
+  }
   refresh();
+  if (placeBound) showEcho();
 });

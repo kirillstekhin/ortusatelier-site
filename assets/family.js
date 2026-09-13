@@ -58,6 +58,7 @@ function readMembers() {
 function familyLine() { return readMembers().out.map(m => m.line).join('; '); }
 
 function refresh() {
+  bumpVersion();          // ⚠️любое изменение формы поднимает версию
   const p = `£${price().toFixed(2)}`;
   document.getElementById('fc-price').textContent = p;
   document.getElementById('fc-buy').textContent = `Create our sky — ${p}`;
@@ -76,12 +77,114 @@ function addRow(name = '', date = '') {
     `<input class="m-date" type="date" value="${date}">` +
     `<button type="button" class="rm" title="Remove">×</button>`;
   row.querySelector('.rm').addEventListener('click', () => {
-    if (box.children.length > 2) row.remove();
+    if (box.children.length > 2) { row.remove(); bumpVersion(); }
   });
+  /* ⚠️Имена и даты участников идут МИМО refresh() — версию поднимаем здесь, иначе
+     правка участника во время запроса осталась бы незамеченной и чекаут открылся бы
+     на старом составе семьи. */
+  row.querySelectorAll('.m-name, .m-date').forEach(i =>
+    i.addEventListener('input', bumpVersion));
   box.appendChild(row);
 }
 
 let gateBox = null;
+
+/* ═══ ХРАНИЛИЩЕ ДИЗАЙНОВ: подтверждённая версия формы → ID → оплата ═══
+   ⚠️БЛИЗНЕЦ блока в ortus.js — правки держать синхронными.
+   ⛔Для Family это важнее, чем для натальной: участники и их даты НЕ помещаются в
+   design-код и раньше набирались в поле Stripe ВТОРОЙ раз целиком.
+   ⛔Молчаливого отката на старый чекаут нет: уйти платить «как раньше» значит потерять
+   персонализацию так, что покупатель об этом не узнает. */
+let designInFlight = false;
+let formVersion = 0;
+let problemBox = null;
+
+function bumpVersion() { formVersion++; }
+
+function showProblem(text) {
+  const anchor = document.getElementById('fc-buy');
+  if (!problemBox) {
+    problemBox = document.createElement('p');
+    problemBox.className = 'cfg-note';
+    problemBox.style.color = '#e0a94a';
+    anchor.insertAdjacentElement('afterend', problemBox);
+  }
+  problemBox.textContent = text;
+  problemBox.hidden = false;
+  problemBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function clearProblem() { if (problemBox) problemBox.hidden = true; }
+
+const DRAFT_KEY = 'ortus_family_draft';
+function saveDraft() {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+      state,
+      family: document.getElementById('fc-family').value,
+      rows: [...document.querySelectorAll('#fc-members .mrow')].map(r => ({
+        name: r.querySelector('.m-name').value, date: r.querySelector('.m-date').value })),
+    }));
+  } catch (e) {}
+}
+function restoreDraft() {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+    if (!d) return null;
+    Object.assign(state, d.state || {});
+    return d;
+  } catch (e) { return null; }
+}
+
+function designPayload(fam) {
+  const members = [...document.querySelectorAll('#fc-members .mrow')].map(r => ({
+    name: r.querySelector('.m-name').value.trim(),
+    date: r.querySelector('.m-date').value,
+  })).filter(m => m.name && m.date);
+  return { product: 'family', design_code: designCode(), format: formatToken(),
+           dedication: fam || null, members };
+}
+
+async function goToCheckout(btn, fam) {
+  if (designInFlight) return;                       // ②двойной клик
+  const myVersion = formVersion;                    // ③версия на момент подтверждения
+  designInFlight = true;
+  clearProblem();
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Saving your design…';
+  saveDraft();
+  let res, data;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    res = await fetch('/api/design', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(designPayload(fam)), signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    data = await res.json().catch(() => ({}));
+  } catch (e) {
+    designInFlight = false; btn.disabled = false; btn.textContent = label;
+    showProblem(e.name === 'AbortError'
+      ? 'Saving your design took too long. Everyone you added is still here — press the button again.'
+      : 'We could not reach our server. Everyone you added is still here — press the button again.');
+    return;                                         // ④данные целы ⑤ссылки нет
+  }
+  designInFlight = false; btn.disabled = false; btn.textContent = label;
+
+  if (myVersion !== formVersion) {
+    showProblem('You changed something while we were saving. Check the family and press the button again.');
+    return;
+  }
+  if (!res.ok || !data.id || !data.payment_link) {
+    showProblem(data && data.problems && data.problems.length
+      ? data.problems.join(' · ')
+      : 'We could not save your design, so we have not sent you to payment. Please try again.');
+    return;
+  }
+  window.location.href = `${data.payment_link}?client_reference_id=${encodeURIComponent(data.id)}`;
+}
+
 function confirmSummary(members, onKeep) {
   const anchor = document.getElementById('fc-buy');
   if (!gateBox) {
@@ -138,19 +241,10 @@ function attachControls() {
     confirmSummary(members, fam => {
       const line = familyLine();
       try { navigator.clipboard.writeText(line); } catch (e) {}
-      const link = PAYMENT_LINKS[formatToken()];
-      if (link) {
-        window.location.href = `${link}?client_reference_id=${encodeURIComponent(designCode())}`;
-      } else {
-        /* линков ещё нет — заказ письмом, ничего не теряем */
-        const subject = encodeURIComponent(`Family constellations — ${fam}`);
-        const body = encodeURIComponent(
-          `Hello!\n\nWe'd love a family constellations print.\n\nFamily name: ${fam}\n` +
-          `The family: ${line}\nFinish: ${state.theme} · ${formatToken()}` +
-          (state.frameType === 'classic' ? ` · ${state.frameColor} frame` : '') +
-          `\nPrice shown: £${price().toFixed(2)}\n\nThank you!`);
-        window.location.href = `mailto:admin@shopcienty.com?subject=${subject}&body=${body}`;
-      }
+      /* ⛔Ссылку выбирает СЕРВЕР по доверенной сетке — PAYMENT_LINKS здесь больше не
+         используется. Браузер не решает, за сколько платить. */
+      goToCheckout(document.getElementById('fc-buy'), fam);
+
     });
   });
 }
@@ -165,7 +259,21 @@ document.addEventListener('DOMContentLoaded', () => {
     `<button type="button" class="cfg-opt${i === 0 ? ' active' : ''}" data-size="${v}">${l}</button>`).join('');
   document.getElementById('fc-colors').innerHTML = COLORS.map(c =>
     `<button type="button" class="cfg-opt${c === 'gold' ? ' active' : ''}" data-color="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join('');
-  addRow(); addRow();
+  /* ⑥ВОЗВРАТ ИЗ STRIPE (или «назад») НЕ ДОЛЖЕН СТИРАТЬ СЕМЬЮ. Для Family это дороже
+     всего: заново вводить шесть имён с датами — ровно та боль, ради которой всё затевалось. */
+  const draft = restoreDraft();
+  if (draft && draft.rows && draft.rows.length >= 2) {
+    draft.rows.forEach(r => addRow(r.name || '', r.date || ''));
+    if (draft.family != null) document.getElementById('fc-family').value = draft.family;
+    ['#fc-themes .cfg-opt|theme|theme', '#fc-formats .cfg-opt|frameType|frametype',
+     '#fc-sizes .cfg-opt|size|size', '#fc-colors .cfg-opt|frameColor|color'].forEach(spec => {
+      const [sel, key, attr] = spec.split('|');
+      document.querySelectorAll(sel).forEach(b =>
+        b.classList.toggle('active', b.dataset[attr] === String(state[key])));
+    });
+  } else {
+    addRow(); addRow();
+  }
   attachControls();
   refresh();
 });
