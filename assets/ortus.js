@@ -298,13 +298,24 @@ async function goToCheckout(btn) {
     showProblem('You changed something while we were saving. Check the details and press the button again.');
     return;
   }
+  if (res.status === 410 && data.error === 'design_expired') {
+    /* Дизайн этой попытки удалён по сроку хранения. Ссылки на него мы не даём и новую
+       оплату по старой попытке не создаём — покупатель подтверждает заново, и это будет
+       новый дизайн. Введённое остаётся на месте. */
+    attemptId = newAttempt();
+    showProblem('This order has been waiting too long, so we cleared the saved copy. Everything you typed is still here — press the button again to confirm it.');
+    return;
+  }
   if (!res.ok || !data.id || !data.payment_link) {
     showProblem(data && data.problems && data.problems.length
       ? data.problems.join(' · ')
       : 'We could not save your design, so we have not sent you to payment. Please try again.');
     return;
   }
-  window.location.href = `${data.payment_link}?client_reference_id=${encodeURIComponent(data.id)}`;
+  /* ⛔НИЧЕГО К ССЫЛКЕ НЕ ДОПИСЫВАЕМ. При Payment Links сюда подставлялся
+     `?client_reference_id=…` — у серверной Checkout Session он уже внутри сессии, а сам
+     URL заканчивается #фрагментом: приписанный ПОСЛЕ решётки запрос в него и попадёт. */
+  window.location.href = data.payment_link;
 }
 
 function confirmSummary(onKeep) {
