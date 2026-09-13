@@ -28,9 +28,15 @@
  *   и при повторе берутся оттуда. Пересчитать `expires_at` = получить конфликт.
  * ③ПОТЕРЯННЫЙ ОТВЕТ НЕ ТЕРЯЕТ СЕССИЮ. Если Stripe создал сессию, а запись результата
  *   упала, повтор с тем же ключом вернёт ТУ ЖЕ сессию, и связь восстановится. Пока связь
- *   не восстановлена, дизайн помечен `link_unknown` — фулфилмент и GC по нему СТОЯТ.
- *   После истечения срока идемпотентности (24ч) вслепую вторую сессию НЕ создаём:
- *   отдаём 409 и отправляем на ручную сверку.
+ *   не восстановлена, ссылку не отдаём — фулфилмент и GC по такой записи СТОЯТ.
+ *   Через 24 часа мы ПРЕКРАЩАЕМ АВТОМАТИЧЕСКИЕ ПОВТОРЫ и отдаём 409 на ручную сверку.
+ *   ⚠️Это НАШ консервативный предел, а не момент, когда Stripe удаляет ключ: точного
+ *   момента мы не знаем и полагаться на него не имеем права. Смысл предела в другом —
+ *   дальше повтор вслепую может создать ВТОРУЮ сессию, а этого допускать нельзя.
+ * ④ПОПЫТКА ПРИВЯЗАНА К СОДЕРЖИМОМУ. В метке лежит отпечаток нормализованного заказа.
+ *   Тот же `attempt` с другой персонализацией — отказ, даже если клиент обычно до этого
+ *   не доводит: клиентская логика тут не защита, а удобство. Иначе подменённое тело
+ *   получило бы ссылку на оплату уже созданной, другой сессии.
  *
  * ⚠️СТАРЫЕ ОПЛАТЫ ПО PAYMENT LINK продолжают проверяться прежним путём — проверка по
  *   `payment_link` не заменяется глобально, а дополняется.
@@ -43,7 +49,7 @@
  * печатные файлы: оттуда наружу уходят presigned-ссылки.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;   // +mode: запись знает, в каком режиме создана
 export const MAX_BODY = 4096;
 export const LIMITS = { member_name: 24, place: 80, dedication: 60 };
 export const MEMBERS_RANGE = [2, 6];
@@ -53,25 +59,70 @@ const RATE_MAX = 10;
 export const CODE_RE =
   /^(SM2|MN2|NT2|FC2)-(\d{8})-(\d{4})-([NS])(\d+)-([EW])(\d+)-Z(-?\d+)-([A-Z]+)-([A-Z0-9]+)-([A-Z]+)$/;
 
-/* Доверенная сетка: продукт+формат → сумма, Price и СТАРАЯ Payment Link.
-   ⛔Сумма продукты НЕ различает — Natal и Family стоят одинаково.
-   `price` — для серверного создания Checkout Session (основной путь с 13.09.2026).
-   `link` оставлен: по нему сверяются СТАРЫЕ оплаты, сделанные до перехода. Проверка по
-   payment_link не заменяется глобально, а дополняется проверкой Price. */
+/* ⛔ДОВЕРЕННАЯ СЕТКА — ПО РЕЖИМАМ. Объекты Stripe в test и live РАЗНЫЕ: price из боевого
+   режима в тестовом не существует, и наоборот. Одна общая таблица означала бы, что
+   тестовый прогон либо не работает, либо (хуже) работает по боевым объектам.
+   ⛔Режим объявляется КОНФИГУРАЦИЕЙ (`STRIPE_MODE`), а не угадывается. Ключ обязан ему
+   соответствовать, таблица берётся по нему же, созданная сессия проверяется по
+   `livemode`. Любое расхождение — отказ БЕЗ ссылки: см. `modeOf`.
+   ⛔Сумма продукты НЕ различает — Natal и Family стоят одинаково; различает Price.
+   `link` — СТАРЫЕ Payment Links, по ним сверяются оплаты, сделанные до перехода; проверка
+   по `payment_link` не заменяется глобально, а дополняется проверкой Price. В тестовом
+   режиме их нет вовсе: старых оплат в нём не бывает. */
 export const ORTUS = {
-  "natal/PRINT3040": { pence: 3499, price: "price_1UBh9oK6RIyYA8uFXGYYHVXj", link: "https://buy.stripe.com/14AbJ24AKfyJan1dW07g40i" },
-  "natal/PRINT4050": { pence: 3999, price: "price_1UBh9qK6RIyYA8uF3HNEytG3", link: "https://buy.stripe.com/28E9AU5EO72d8eTdW07g40j" },
-  "natal/PRINT5070": { pence: 4499, price: "price_1UBh9sK6RIyYA8uF3W7cdAcg", link: "https://buy.stripe.com/eVqdRaaZ84U59iX6ty7g40k" },
-  "natal/CLASSIC3040": { pence: 6999, price: "price_1UBh9uK6RIyYA8uFs65mZoEV", link: "https://buy.stripe.com/aFa14ogjs86hgLpdW07g40l" },
-  "natal/CLASSIC4050": { pence: 7999, price: "price_1UBh9vK6RIyYA8uFvVwNM2ZM", link: "https://buy.stripe.com/00wbJ27MWaep0Mr2di7g40m" },
-  "natal/CLASSIC5070": { pence: 8999, price: "price_1UBh9yK6RIyYA8uFpf2MkEA5", link: "https://buy.stripe.com/3cI00kc3cbit3YDf047g40n" },
-  "family/PRINT3040": { pence: 3499, price: "price_1UCHa2K6RIyYA8uFMsMHA1zk", link: "https://buy.stripe.com/14A6oI5EO3Q13YD4lq7g40o" },
-  "family/PRINT4050": { pence: 3999, price: "price_1UCHa3K6RIyYA8uFeQhH1uH4", link: "https://buy.stripe.com/9B600k0kudqB2Uz7xC7g40p" },
-  "family/PRINT5070": { pence: 4499, price: "price_1UCHa5K6RIyYA8uF573zueJC", link: "https://buy.stripe.com/aFa9AUd7gfyJ1Qvg487g40q" },
-  "family/CLASSIC3040": { pence: 6999, price: "price_1UCHa6K6RIyYA8uFs8rawXDZ", link: "https://buy.stripe.com/eVq6oI6IS72d9iXdW07g40r" },
-  "family/CLASSIC4050": { pence: 7999, price: "price_1UCHa8K6RIyYA8uFikCWUZrN", link: "https://buy.stripe.com/14A4gA0ku72dfHl5pu7g40s" },
-  "family/CLASSIC5070": { pence: 8999, price: "price_1UCHa9K6RIyYA8uFtgwaWX6T", link: "https://buy.stripe.com/aFa14ogjs72dgLp19e7g40t" },
+  live: {
+    "natal/PRINT3040": { pence: 3499, price: "price_1UBh9oK6RIyYA8uFXGYYHVXj", link: "https://buy.stripe.com/14AbJ24AKfyJan1dW07g40i" },
+    "natal/PRINT4050": { pence: 3999, price: "price_1UBh9qK6RIyYA8uF3HNEytG3", link: "https://buy.stripe.com/28E9AU5EO72d8eTdW07g40j" },
+    "natal/PRINT5070": { pence: 4499, price: "price_1UBh9sK6RIyYA8uF3W7cdAcg", link: "https://buy.stripe.com/eVqdRaaZ84U59iX6ty7g40k" },
+    "natal/CLASSIC3040": { pence: 6999, price: "price_1UBh9uK6RIyYA8uFs65mZoEV", link: "https://buy.stripe.com/aFa14ogjs86hgLpdW07g40l" },
+    "natal/CLASSIC4050": { pence: 7999, price: "price_1UBh9vK6RIyYA8uFvVwNM2ZM", link: "https://buy.stripe.com/00wbJ27MWaep0Mr2di7g40m" },
+    "natal/CLASSIC5070": { pence: 8999, price: "price_1UBh9yK6RIyYA8uFpf2MkEA5", link: "https://buy.stripe.com/3cI00kc3cbit3YDf047g40n" },
+    "family/PRINT3040": { pence: 3499, price: "price_1UCHa2K6RIyYA8uFMsMHA1zk", link: "https://buy.stripe.com/14A6oI5EO3Q13YD4lq7g40o" },
+    "family/PRINT4050": { pence: 3999, price: "price_1UCHa3K6RIyYA8uFeQhH1uH4", link: "https://buy.stripe.com/9B600k0kudqB2Uz7xC7g40p" },
+    "family/PRINT5070": { pence: 4499, price: "price_1UCHa5K6RIyYA8uF573zueJC", link: "https://buy.stripe.com/aFa9AUd7gfyJ1Qvg487g40q" },
+    "family/CLASSIC3040": { pence: 6999, price: "price_1UCHa6K6RIyYA8uFs8rawXDZ", link: "https://buy.stripe.com/eVq6oI6IS72d9iXdW07g40r" },
+    "family/CLASSIC4050": { pence: 7999, price: "price_1UCHa8K6RIyYA8uFikCWUZrN", link: "https://buy.stripe.com/14A4gA0ku72dfHl5pu7g40s" },
+    "family/CLASSIC5070": { pence: 8999, price: "price_1UCHa9K6RIyYA8uFtgwaWX6T", link: "https://buy.stripe.com/aFa14ogjs72dgLp19e7g40t" },
+  },
+  /* ⚠️Заполняется `tools/stripe_test_catalog.py` — он же переиспользует уже созданные
+     объекты, чтобы повторные прогоны не плодили товары в тестовом режиме. */
+  test: {
+    "natal/PRINT3040": { pence: 3499, price: "price_1UFINmK6RIyYA8uFMj8zFZ5W" },
+    "natal/PRINT4050": { pence: 3999, price: "price_1UFINoK6RIyYA8uFqbnkcNEM" },
+    "natal/PRINT5070": { pence: 4499, price: "price_1UFINqK6RIyYA8uFoi6JMVa0" },
+    "natal/CLASSIC3040": { pence: 6999, price: "price_1UFINrK6RIyYA8uFJOsLX5IF" },
+    "natal/CLASSIC4050": { pence: 7999, price: "price_1UFINtK6RIyYA8uFh8YHGP7H" },
+    "natal/CLASSIC5070": { pence: 8999, price: "price_1UFINvK6RIyYA8uF8WujYVyn" },
+    "family/PRINT3040": { pence: 3499, price: "price_1UFINxK6RIyYA8uF11aDSykp" },
+    "family/PRINT4050": { pence: 3999, price: "price_1UFINzK6RIyYA8uFtZy3MBWX" },
+    "family/PRINT5070": { pence: 4499, price: "price_1UFIO1K6RIyYA8uFsPcEaCWC" },
+    "family/CLASSIC3040": { pence: 6999, price: "price_1UFIO4K6RIyYA8uFWyE0rTg2" },
+    "family/CLASSIC4050": { pence: 7999, price: "price_1UFIO6K6RIyYA8uFlEyzC4j2" },
+    "family/CLASSIC5070": { pence: 8999, price: "price_1UFIO7K6RIyYA8uFeC4VgQ9I" },
+  },
 };
+
+/* Ключи сетки одни и те же в обоих режимах — этим проверяется, что тестовый каталог
+   действительно повторяет боевой, а не «примерно похож». */
+const GRID_KEYS = Object.keys(ORTUS.live);
+const MODE_KEY_RE = { test: /^(sk|rk)_test_/, live: /^(sk|rk)_live_/ };
+
+/** Режим + его таблица, либо код отказа. ⛔Ничего не угадываем и ничего не чиним сами:
+    любое расхождение конфигурации — отказ, а не «возьмём что есть». */
+export function modeOf(env) {
+  const m = env && env.STRIPE_MODE;
+  if (!MODE_KEY_RE[m]) return { error: "mode_unset" };          // режим не объявлен
+  if (!env.STRIPE_KEY) return { error: "key_unset" };
+  if (!MODE_KEY_RE[m].test(env.STRIPE_KEY)) return { error: "mode_key_mismatch" };
+  const grid = ORTUS[m];
+  // Таблица режима обязана совпасть с боевой по составу И суммам: разойдутся — прогон
+  // проверит не то, что поедет в бой.
+  for (const k of GRID_KEYS) {
+    if (!grid[k] || !grid[k].price || grid[k].price === "TBD") return { error: "mode_table_incomplete" };
+    if (grid[k].pence !== ORTUS.live[k].pence) return { error: "mode_table_diverged" };
+  }
+  return { mode: m, grid };
+}
 
 const DASHES = ["—", "-", "?", "–"];
 
@@ -99,7 +150,7 @@ export function validate(rec) {
 
   const fmt = rec && rec.format;
   const key = `${product}/${fmt}`;
-  if (!(key in ORTUS)) bad.push(`format=${JSON.stringify(fmt)} не из сетки Ortus`);
+  if (!GRID_KEYS.includes(key)) bad.push(`format=${JSON.stringify(fmt)} не из сетки Ortus`);
   else if (m && m[10] !== fmt) bad.push(`format=${JSON.stringify(fmt)} не совпадает с форматом в design_code (${m[10]})`);
 
   const pl = (rec && rec.place) || null;
@@ -177,7 +228,9 @@ async function rateLimited(ip) {
 
 const ATTEMPT_RE = /^a_[a-z0-9]{16,40}$/;
 const SESSION_TTL_S = 23 * 3600;          // <24ч: Stripe не принимает больше суток
-const IDEM_TTL_MS = 24 * 3600 * 1000;     // столько живёт ключ идемпотентности у Stripe
+/* ⚠️НЕ «срок жизни ключа у Stripe», а НАШ предел автоматических повторов: после него
+   повторяем не вслепую, а руками. Момент удаления ключа Stripe нам не объявляет. */
+const AUTO_RETRY_WINDOW_MS = 24 * 3600 * 1000;
 
 /** Тело для Stripe в form-encoded. Порядок ключей значения не имеет, состав — имеет. */
 function stripeBody(params) {
@@ -205,6 +258,31 @@ async function readJson(bucket, key) {
   return o ? await o.json() : null;
 }
 
+/** Нормализованное содержимое заказа — ровно то, что уйдёт в печать. */
+function contentOf(body) {
+  return {
+    product: body.product,
+    design_code: body.design_code.trim(),
+    format: body.format,
+    dedication: ((body.dedication || "").trim()) || null,
+    place: body.place ? { name: (body.place.name || "").trim(), lat: body.place.lat, lon: body.place.lon } : null,
+    members: Array.isArray(body.members) ? body.members.map((x) => ({ name: (x.name || "").trim(), date: x.date })) : null,
+  };
+}
+
+/** ④Отпечаток содержимого. ⚠️Строка собирается ЯВНО и по порядку: `JSON.stringify` объекта
+    зависел бы от порядка ключей, пришедшего от браузера, и тот же заказ давал бы разные
+    отпечатки. Сравниваем НОРМАЛИЗОВАННОЕ — лишний пробел не должен выглядеть подменой. */
+async function fingerprint(c) {
+  const canon = JSON.stringify([
+    c.product, c.design_code, c.format, c.dedication,
+    c.place ? [c.place.name, c.place.lat, c.place.lon] : null,
+    (c.members || []).map((m) => [m.name, m.date]),
+  ]);
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canon));
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 
@@ -226,10 +304,20 @@ export async function onRequestPost({ request, env }) {
   const attempt = (body && body.attempt) || "";
   if (!ATTEMPT_RE.test(attempt)) return json({ error: "bad_attempt" }, 400);
 
+  // ⛔РЕЖИМ — ДО ВСЕГО ОСТАЛЬНОГО. Незачем класть в хранилище запись, оплатить которую
+  //   всё равно нечем: без согласованного режима ссылки не будет.
+  const cfg = modeOf(env);
+  if (cfg.error) {
+    console.log("stripe config refused:", cfg.error);
+    return json({ error: "not_configured", detail: cfg.error }, 503);
+  }
+
   const problems = validate(body);
   if (problems.length) return json({ error: "invalid", problems }, 400);   // ⚠️без перс.данных
 
-  const grid = ORTUS[`${body.product}/${body.format}`];
+  const item = cfg.grid[`${body.product}/${body.format}`];
+  const content = contentOf(body);
+  const fp = await fingerprint(content);
   const aKey = `attempts/${attempt}.json`;
 
   let att;
@@ -240,20 +328,35 @@ export async function onRequestPost({ request, env }) {
     return json({ error: "storage_unavailable" }, 503);
   }
 
+  // ④ТОТ ЖЕ `attempt` С ДРУГИМ СОДЕРЖИМЫМ — ОТКАЗ. Клиентская логика обычно до этого не
+  //   доводит, но полагаться на неё нельзя: иначе подменённое тело получило бы ссылку на
+  //   оплату уже созданной, ДРУГОЙ сессии. Отказ и здесь явный: старую ссылку не отдаём.
+  //   ⚠️Метка без отпечатка (`att.fp === undefined`) тоже не проходит — так и надо.
+  if (att && (att.fp !== fp || att.mode !== cfg.mode)) {
+    const why = att.fp !== fp ? "attempt_content_changed" : "attempt_mode_changed";
+    console.log("attempt rebound refused", attempt, why);
+    return json({ error: why }, 409);
+  }
+
   // ── ПОВТОР ПО ИЗВЕСТНОМУ РЕЗУЛЬТАТУ: та же сессия, ничего не создаём ──
   if (att && att.session_url) return json({ id: att.design_id, payment_link: att.session_url, repeat: true });
 
   // ── ПОВТОР С НЕИЗВЕСТНЫМ РЕЗУЛЬТАТОМ: тот же ключ, ТЕ ЖЕ параметры ──
   if (att) {
-    if (Date.now() - att.started_ms > IDEM_TTL_MS) {
-      // ③вслепую вторую сессию НЕ создаём — ключ идемпотентности у Stripe уже протух
-      console.log("attempt stale, manual reconciliation", attempt);
+    if (Date.now() - att.started_ms > AUTO_RETRY_WINDOW_MS) {
+      // ③прекращаем АВТОМАТИЧЕСКИЕ повторы: за этим пределом повтор рискует создать
+      //   ВТОРУЮ сессию. Дальше — только ручная сверка.
+      console.log("attempt past auto-retry window", attempt);
       return json({ error: "needs_reconciliation" }, 409);
     }
     const res = await stripe(env, "checkout/sessions", att.params, att.idem_key);
     if (!res.ok || !res.data.url) {
       console.log("stripe retry failed", attempt, res.status);
       return json({ error: "checkout_unavailable" }, 503);
+    }
+    if (res.data.livemode !== (cfg.mode === "live")) {
+      console.log("session mode mismatch on retry", attempt, res.data.livemode);
+      return json({ error: "not_configured", detail: "mode_session_mismatch" }, 503);
     }
     const linked = { ...att, session_id: res.data.id, session_url: res.data.url };
     try {
@@ -270,15 +373,16 @@ export async function onRequestPost({ request, env }) {
     schema_version: SCHEMA_VERSION,
     id: newId(),
     created: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-    product: body.product,
-    design_code: body.design_code.trim(),
-    format: body.format,
-    expected_pence: grid.pence,
-    dedication: ((body.dedication || "").trim()) || null,
+    mode: cfg.mode,            // ⛔запись знает свой режим: тестовую оплату боевой
+    product: content.product,  //   фулфилмент печатать не станет
+    design_code: content.design_code,
+    format: content.format,
+    expected_pence: item.pence,
+    dedication: content.dedication,
     attempt,
   };
-  if (body.place) rec.place = { name: (body.place.name || "").trim(), lat: body.place.lat, lon: body.place.lon };
-  if (Array.isArray(body.members)) rec.members = body.members.map((x) => ({ name: (x.name || "").trim(), date: x.date }));
+  if (content.place) rec.place = content.place;
+  if (content.members) rec.members = content.members;
 
   const payload = new TextEncoder().encode(JSON.stringify(rec));
   if (payload.length > MAX_BODY) return json({ error: "too_large", limit: MAX_BODY }, 413);
@@ -305,7 +409,7 @@ export async function onRequestPost({ request, env }) {
   const origin = new URL(request.url).origin;
   const params = {
     mode: "payment",
-    "line_items[0][price]": grid.price,
+    "line_items[0][price]": item.price,
     "line_items[0][quantity]": 1,
     client_reference_id: rec.id,
     expires_at: Math.floor(Date.now() / 1000) + SESSION_TTL_S,
@@ -315,7 +419,7 @@ export async function onRequestPost({ request, env }) {
     billing_address_collection: "required",
   };
   const idem_key = `design_${rec.id}`;
-  const marker = { attempt, design_id: rec.id, idem_key, params, started_ms: Date.now() };
+  const marker = { attempt, mode: cfg.mode, fp, design_id: rec.id, idem_key, params, started_ms: Date.now() };
 
   // ⛔МЕТКА ДО ВЫЗОВА STRIPE. Потеряется ответ — повтор найдёт метку, возьмёт ТЕ ЖЕ
   //   параметры и ТОТ ЖЕ ключ, и Stripe вернёт уже созданную сессию, а не вторую.
@@ -330,6 +434,12 @@ export async function onRequestPost({ request, env }) {
   if (!res.ok || !res.data.url) {
     console.log("stripe create failed", rec.id, res.status);
     return json({ error: "checkout_unavailable" }, 503);   // ссылки нет
+  }
+  // ⛔ТРЕТЬЯ СВЕРКА РЕЖИМА: объявленный ≠ режим СОЗДАННОЙ сессии — ссылку не отдаём.
+  //   Ключ и таблица уже сошлись выше; это последнее место, где расхождение ещё видно.
+  if (res.data.livemode !== (cfg.mode === "live")) {
+    console.log("session mode mismatch", rec.id, res.data.livemode);
+    return json({ error: "not_configured", detail: "mode_session_mismatch" }, 503);
   }
   try {
     await env.DESIGNS.put(aKey, JSON.stringify({ ...marker, session_id: res.data.id, session_url: res.data.url }),
