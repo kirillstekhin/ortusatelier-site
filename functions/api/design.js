@@ -11,6 +11,29 @@
  *   РОЖДЕНИЯ ДЕТЕЙ. Читает только фулфилмент, с сервера, отдельным ключом.
  * ⛔ССЫЛКА — ТОЛЬКО ПОСЛЕ УСПЕШНОЙ ЗАПИСИ. Ошибка или таймаут R2 = 503 и НИКАКОЙ ссылки:
  *   иначе покупатель заплатит за дизайн, которого в хранилище нет.
+ *
+ * ═══ ПОЧЕМУ CHECKOUT SESSION, А НЕ PAYMENT LINK (пересмотр 13.09.2026) ═══
+ * Payment Link ВЕЧЕН: сохранённая покупателем ссылка создаёт новую сессию когда угодно,
+ * в том числе для дизайна, который мы обязаны стереть. Ограничить срок оплаты КОНКРЕТНОГО
+ * дизайна через него нельзя — значит автоудаление персональных данных заперто навсегда.
+ * Поэтому сессию создаёт сервер: дизайн живёт 7 дней, сессия до 24 часов, это РАЗНЫЕ сроки.
+ *
+ * ⛔ТРИ УСЛОВИЯ ИДЕМПОТЕНТНОСТИ (требования юзера 13.09), каждое закрывает свой провал:
+ * ①ПОПЫТКА ФИКСИРУЕТСЯ ДО ПЕРВОГО ЗАПРОСА. Клиент присылает `attempt` — свой id, который
+ *   он держит неизменным при повторах и меняет ТОЛЬКО при изменении персонализации. Если
+ *   бы каждый повтор создавал новый дизайн, ключ `design_<id>` не защитил бы ни от чего:
+ *   у каждого дубля был бы свой ключ. Поэтому идемпотентность живёт на уровне ПОПЫТКИ.
+ * ②ПОВТОР ШЛЁТ В STRIPE НЕИЗМЕННЫЕ ПАРАМЕТРЫ. Stripe требует того же тела при том же
+ *   ключе. Параметры (включая `expires_at`!) пишутся в запись попытки ДО первого вызова
+ *   и при повторе берутся оттуда. Пересчитать `expires_at` = получить конфликт.
+ * ③ПОТЕРЯННЫЙ ОТВЕТ НЕ ТЕРЯЕТ СЕССИЮ. Если Stripe создал сессию, а запись результата
+ *   упала, повтор с тем же ключом вернёт ТУ ЖЕ сессию, и связь восстановится. Пока связь
+ *   не восстановлена, дизайн помечен `link_unknown` — фулфилмент и GC по нему СТОЯТ.
+ *   После истечения срока идемпотентности (24ч) вслепую вторую сессию НЕ создаём:
+ *   отдаём 409 и отправляем на ручную сверку.
+ *
+ * ⚠️СТАРЫЕ ОПЛАТЫ ПО PAYMENT LINK продолжают проверяться прежним путём — проверка по
+ *   `payment_link` не заменяется глобально, а дополняется.
  * ⛔ЦЕНУ И ССЫЛКУ ВЫБИРАЕТ СЕРВЕР. Сумма от браузера не принимается — её в теле нет вовсе.
  * ⛔В ЛОГИ НЕ ПИСАТЬ ПЕРСОНАЛЬНОЕ. Ни места, ни имён, ни дат рождения — только id и код ошибки.
  * ⚠️ВАЛИДАЦИЯ ОБЯЗАНА СОВПАДАТЬ С PYTHON. Общие примеры: platform/design_store_cases.json,
@@ -30,21 +53,24 @@ const RATE_MAX = 10;
 export const CODE_RE =
   /^(SM2|MN2|NT2|FC2)-(\d{8})-(\d{4})-([NS])(\d+)-([EW])(\d+)-Z(-?\d+)-([A-Z]+)-([A-Z0-9]+)-([A-Z]+)$/;
 
-/* Доверенная сетка: продукт+формат → цена и ссылка. Снято из Stripe 13.09.2026.
-   ⛔Сумма продукты НЕ различает — Natal и Family стоят одинаково. Различает ссылка. */
+/* Доверенная сетка: продукт+формат → сумма, Price и СТАРАЯ Payment Link.
+   ⛔Сумма продукты НЕ различает — Natal и Family стоят одинаково.
+   `price` — для серверного создания Checkout Session (основной путь с 13.09.2026).
+   `link` оставлен: по нему сверяются СТАРЫЕ оплаты, сделанные до перехода. Проверка по
+   payment_link не заменяется глобально, а дополняется проверкой Price. */
 export const ORTUS = {
-  "natal/PRINT3040":   { pence: 3499, link: "https://buy.stripe.com/14AbJ24AKfyJan1dW07g40i" },
-  "natal/PRINT4050":   { pence: 3999, link: "https://buy.stripe.com/28E9AU5EO72d8eTdW07g40j" },
-  "natal/PRINT5070":   { pence: 4499, link: "https://buy.stripe.com/eVqdRaaZ84U59iX6ty7g40k" },
-  "natal/CLASSIC3040": { pence: 6999, link: "https://buy.stripe.com/aFa14ogjs86hgLpdW07g40l" },
-  "natal/CLASSIC4050": { pence: 7999, link: "https://buy.stripe.com/00wbJ27MWaep0Mr2di7g40m" },
-  "natal/CLASSIC5070": { pence: 8999, link: "https://buy.stripe.com/3cI00kc3cbit3YDf047g40n" },
-  "family/PRINT3040":   { pence: 3499, link: "https://buy.stripe.com/14A6oI5EO3Q13YD4lq7g40o" },
-  "family/PRINT4050":   { pence: 3999, link: "https://buy.stripe.com/9B600k0kudqB2Uz7xC7g40p" },
-  "family/PRINT5070":   { pence: 4499, link: "https://buy.stripe.com/aFa9AUd7gfyJ1Qvg487g40q" },
-  "family/CLASSIC3040": { pence: 6999, link: "https://buy.stripe.com/eVq6oI6IS72d9iXdW07g40r" },
-  "family/CLASSIC4050": { pence: 7999, link: "https://buy.stripe.com/14A4gA0ku72dfHl5pu7g40s" },
-  "family/CLASSIC5070": { pence: 8999, link: "https://buy.stripe.com/aFa14ogjs72dgLp19e7g40t" },
+  "natal/PRINT3040": { pence: 3499, price: "price_1UBh9oK6RIyYA8uFXGYYHVXj", link: "https://buy.stripe.com/14AbJ24AKfyJan1dW07g40i" },
+  "natal/PRINT4050": { pence: 3999, price: "price_1UBh9qK6RIyYA8uF3HNEytG3", link: "https://buy.stripe.com/28E9AU5EO72d8eTdW07g40j" },
+  "natal/PRINT5070": { pence: 4499, price: "price_1UBh9sK6RIyYA8uF3W7cdAcg", link: "https://buy.stripe.com/eVqdRaaZ84U59iX6ty7g40k" },
+  "natal/CLASSIC3040": { pence: 6999, price: "price_1UBh9uK6RIyYA8uFs65mZoEV", link: "https://buy.stripe.com/aFa14ogjs86hgLpdW07g40l" },
+  "natal/CLASSIC4050": { pence: 7999, price: "price_1UBh9vK6RIyYA8uFvVwNM2ZM", link: "https://buy.stripe.com/00wbJ27MWaep0Mr2di7g40m" },
+  "natal/CLASSIC5070": { pence: 8999, price: "price_1UBh9yK6RIyYA8uFpf2MkEA5", link: "https://buy.stripe.com/3cI00kc3cbit3YDf047g40n" },
+  "family/PRINT3040": { pence: 3499, price: "price_1UCHa2K6RIyYA8uFMsMHA1zk", link: "https://buy.stripe.com/14A6oI5EO3Q13YD4lq7g40o" },
+  "family/PRINT4050": { pence: 3999, price: "price_1UCHa3K6RIyYA8uFeQhH1uH4", link: "https://buy.stripe.com/9B600k0kudqB2Uz7xC7g40p" },
+  "family/PRINT5070": { pence: 4499, price: "price_1UCHa5K6RIyYA8uF573zueJC", link: "https://buy.stripe.com/aFa9AUd7gfyJ1Qvg487g40q" },
+  "family/CLASSIC3040": { pence: 6999, price: "price_1UCHa6K6RIyYA8uFs8rawXDZ", link: "https://buy.stripe.com/eVq6oI6IS72d9iXdW07g40r" },
+  "family/CLASSIC4050": { pence: 7999, price: "price_1UCHa8K6RIyYA8uFikCWUZrN", link: "https://buy.stripe.com/14A4gA0ku72dfHl5pu7g40s" },
+  "family/CLASSIC5070": { pence: 8999, price: "price_1UCHa9K6RIyYA8uFtgwaWX6T", link: "https://buy.stripe.com/aFa14ogjs72dgLp19e7g40t" },
 };
 
 const DASHES = ["—", "-", "?", "–"];
@@ -149,6 +175,36 @@ async function rateLimited(ip) {
   } catch { return false; }
 }
 
+const ATTEMPT_RE = /^a_[a-z0-9]{16,40}$/;
+const SESSION_TTL_S = 23 * 3600;          // <24ч: Stripe не принимает больше суток
+const IDEM_TTL_MS = 24 * 3600 * 1000;     // столько живёт ключ идемпотентности у Stripe
+
+/** Тело для Stripe в form-encoded. Порядок ключей значения не имеет, состав — имеет. */
+function stripeBody(params) {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) u.append(k, String(v));
+  return u;
+}
+
+async function stripe(env, path, params, idemKey) {
+  const r = await fetch(`https://api.stripe.com/v1/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.STRIPE_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(idemKey ? { "Idempotency-Key": idemKey } : {}),
+    },
+    body: stripeBody(params),
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
+
+async function readJson(bucket, key) {
+  const o = await bucket.get(key);
+  return o ? await o.json() : null;
+}
+
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 
@@ -166,12 +222,50 @@ export async function onRequestPost({ request, env }) {
     body = JSON.parse(text);
   } catch { return json({ error: "bad_json" }, 400); }
 
+  // ①ПОПЫТКА. Клиент фиксирует её ДО первого запроса и держит неизменной при повторах.
+  const attempt = (body && body.attempt) || "";
+  if (!ATTEMPT_RE.test(attempt)) return json({ error: "bad_attempt" }, 400);
+
   const problems = validate(body);
-  if (problems.length) return json({ error: "invalid", problems }, 400);   // ⚠️problems без перс.данных
+  if (problems.length) return json({ error: "invalid", problems }, 400);   // ⚠️без перс.данных
 
-  const key = `${body.product}/${body.format}`;
-  const grid = ORTUS[key];
+  const grid = ORTUS[`${body.product}/${body.format}`];
+  const aKey = `attempts/${attempt}.json`;
 
+  let att;
+  try {
+    att = await readJson(env.DESIGNS, aKey);
+  } catch (e) {
+    console.log("attempt read failed", attempt, e && e.name);
+    return json({ error: "storage_unavailable" }, 503);
+  }
+
+  // ── ПОВТОР ПО ИЗВЕСТНОМУ РЕЗУЛЬТАТУ: та же сессия, ничего не создаём ──
+  if (att && att.session_url) return json({ id: att.design_id, payment_link: att.session_url, repeat: true });
+
+  // ── ПОВТОР С НЕИЗВЕСТНЫМ РЕЗУЛЬТАТОМ: тот же ключ, ТЕ ЖЕ параметры ──
+  if (att) {
+    if (Date.now() - att.started_ms > IDEM_TTL_MS) {
+      // ③вслепую вторую сессию НЕ создаём — ключ идемпотентности у Stripe уже протух
+      console.log("attempt stale, manual reconciliation", attempt);
+      return json({ error: "needs_reconciliation" }, 409);
+    }
+    const res = await stripe(env, "checkout/sessions", att.params, att.idem_key);
+    if (!res.ok || !res.data.url) {
+      console.log("stripe retry failed", attempt, res.status);
+      return json({ error: "checkout_unavailable" }, 503);
+    }
+    const linked = { ...att, session_id: res.data.id, session_url: res.data.url };
+    try {
+      await env.DESIGNS.put(aKey, JSON.stringify(linked), { httpMetadata: { contentType: "application/json" } });
+    } catch (e) {
+      console.log("attempt link write failed", attempt, e && e.name);
+      return json({ error: "storage_unavailable" }, 503);   // связь не восстановлена — фулфилмент и GC стоят
+    }
+    return json({ id: att.design_id, payment_link: res.data.url, recovered: true });
+  }
+
+  // ── НОВАЯ ПОПЫТКА ──
   const rec = {
     schema_version: SCHEMA_VERSION,
     id: newId(),
@@ -181,39 +275,73 @@ export async function onRequestPost({ request, env }) {
     format: body.format,
     expected_pence: grid.pence,
     dedication: ((body.dedication || "").trim()) || null,
+    attempt,
   };
-  if (body.place) rec.place = {
-    name: (body.place.name || "").trim(), lat: body.place.lat, lon: body.place.lon,
-  };
-  if (Array.isArray(body.members)) rec.members = body.members.map((x) => ({
-    name: (x.name || "").trim(), date: x.date,
-  }));
+  if (body.place) rec.place = { name: (body.place.name || "").trim(), lat: body.place.lat, lon: body.place.lon };
+  if (Array.isArray(body.members)) rec.members = body.members.map((x) => ({ name: (x.name || "").trim(), date: x.date }));
 
   const payload = new TextEncoder().encode(JSON.stringify(rec));
   if (payload.length > MAX_BODY) return json({ error: "too_large", limit: MAX_BODY }, 413);
 
-  // ⛔ЗАПИСЬ ПЕРВОЙ. Ссылку отдаём только если дизайн реально лёг в хранилище.
+  // ⛔ЗАПИСЬ ДИЗАЙНА ПЕРВОЙ. Ссылку отдаём только если дизайн реально лёг в хранилище.
   let put;
   try {
     put = await env.DESIGNS.put(`designs/${rec.id}.json`, payload, {
       httpMetadata: { contentType: "application/json" },
-      onlyIf: { etagDoesNotMatch: "*" },        // ⛔перезапись существующего ID запрещена
+      onlyIf: { etagDoesNotMatch: "*" },
     });
   } catch (e) {
-    console.log("design store write failed", rec.id, e && e.name);   // ⚠️без перс.данных
+    console.log("design store write failed", rec.id, e && e.name);
     return json({ error: "storage_unavailable" }, 503);
   }
-  // ⛔R2 ПРИ НЕВЫПОЛНЕННОМ `onlyIf` НЕ БРОСАЕТ ИСКЛЮЧЕНИЕ, А ВОЗВРАЩАЕТ null.
-  // Найдено живой проверкой 13.09: два POST на один ключ дали 200 и ССЫЛКУ ОБА раза,
-  // хотя вторая запись не сохранилась — в R2 осталась первая. То есть покупатель ушёл бы
-  // платить за дизайн, которого в хранилище нет в том виде, в каком он его подтвердил.
-  // Данные не пострадали, но try/catch этого не видел: проверять надо ВОЗВРАЩЁННОЕ значение.
+  // ⛔R2 при невыполненном onlyIf НЕ бросает, а возвращает null (поймано живой проверкой).
   if (!put) {
     console.log("design store write skipped (precondition failed)", rec.id);
     return json({ error: "storage_unavailable" }, 503);
   }
 
-  return json({ id: rec.id, payment_link: grid.link });
+  // ②ПАРАМЕТРЫ ФИКСИРУЮТСЯ ЗДЕСЬ И БОЛЬШЕ НЕ ПЕРЕСЧИТЫВАЮТСЯ. expires_at особенно:
+  //   пересчитать его при повторе = послать Stripe другое тело под тем же ключом = конфликт.
+  const origin = new URL(request.url).origin;
+  const params = {
+    mode: "payment",
+    "line_items[0][price]": grid.price,
+    "line_items[0][quantity]": 1,
+    client_reference_id: rec.id,
+    expires_at: Math.floor(Date.now() / 1000) + SESSION_TTL_S,
+    success_url: `${origin}/thank-you.html?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/`,
+    "shipping_address_collection[allowed_countries][0]": "GB",
+    billing_address_collection: "required",
+  };
+  const idem_key = `design_${rec.id}`;
+  const marker = { attempt, design_id: rec.id, idem_key, params, started_ms: Date.now() };
+
+  // ⛔МЕТКА ДО ВЫЗОВА STRIPE. Потеряется ответ — повтор найдёт метку, возьмёт ТЕ ЖЕ
+  //   параметры и ТОТ ЖЕ ключ, и Stripe вернёт уже созданную сессию, а не вторую.
+  try {
+    await env.DESIGNS.put(aKey, JSON.stringify(marker), { httpMetadata: { contentType: "application/json" } });
+  } catch (e) {
+    console.log("attempt marker write failed", attempt, e && e.name);
+    return json({ error: "storage_unavailable" }, 503);
+  }
+
+  const res = await stripe(env, "checkout/sessions", params, idem_key);
+  if (!res.ok || !res.data.url) {
+    console.log("stripe create failed", rec.id, res.status);
+    return json({ error: "checkout_unavailable" }, 503);   // ссылки нет
+  }
+  try {
+    await env.DESIGNS.put(aKey, JSON.stringify({ ...marker, session_id: res.data.id, session_url: res.data.url }),
+      { httpMetadata: { contentType: "application/json" } });
+  } catch (e) {
+    // ③сессия создана, связь не записана. Ссылку НЕ отдаём: покупатель заплатит, а мы
+    //   не будем знать, за что. Повтор восстановит связь тем же ключом.
+    console.log("session link write failed", rec.id, e && e.name);
+    return json({ error: "storage_unavailable" }, 503);
+  }
+
+  return json({ id: rec.id, payment_link: res.data.url });
 }
 
 /* ⛔ЧТЕНИЯ НЕТ НАМЕРЕННО. PUT и DELETE Pages сам отбивает 405, а вот GET — НЕТ: проверено

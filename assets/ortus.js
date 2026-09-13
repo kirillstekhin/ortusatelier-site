@@ -197,7 +197,21 @@ let designInFlight = false;
 let formVersion = 0;                 // ⚠️растёт на КАЖДОЕ изменение формы
 let problemBox = null;
 
-function bumpVersion() { formVersion++; }
+function bumpVersion() {
+  formVersion++;
+  attemptId = null;   // ①изменили данные — попытка новая
+}
+/* ①ИДЕНТИФИКАТОР ПОПЫТКИ. Фиксируется ДО первого запроса и держится неизменным при
+   повторах — иначе каждый повтор создавал бы новый дизайн, у каждого дубля был бы свой
+   ключ идемпотентности, и защиты от дублей не было бы вовсе.
+   ⛔Сбрасывается на ЛЮБОМ изменении персонализации (см. bumpVersion): изменили данные —
+   это другая покупка, и сессия у неё должна быть своя. */
+let attemptId = null;
+function newAttempt() {
+  const r = crypto.getRandomValues(new Uint8Array(12));
+  return 'a_' + [...r].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+}
+
 
 function showProblem(text) {
   const anchor = document.getElementById('ns-buy');
@@ -217,7 +231,12 @@ const DRAFT_KEY = 'ortus_natal_draft';
 function saveDraft() {
   try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...state, _at: Date.now() })); } catch (e) {}
 }
-const DRAFT_TTL_MS = 24 * 3600 * 1000;   /* ⚠️даже внутри вкладки не держим сутками */
+/* Срок годности черновика внутри вкладки.
+   ⚠️ФОРМУЛИРОВКА ТОЧНАЯ: очистка происходит ПРИ ЧТЕНИИ. Значит просроченный черновик
+   удаляется при следующем заходе на страницу, а НЕ ровно через 24 часа сам по себе.
+   Если вкладку не открывать, данные лежат до её закрытия. Гарантию даёт только
+   sessionStorage (умирает с вкладкой) и очистка на thank-you после заказа. */
+const DRAFT_TTL_MS = 24 * 3600 * 1000;
 
 function restoreDraft() {
   /* ⚠️Чтобы возврат из Stripe (или «назад») не стирал введённое. */
@@ -236,6 +255,7 @@ function restoreDraft() {
 
 function designPayload() {
   return {
+    attempt: attemptId,
     product: 'natal',
     design_code: designCode(),
     format: formatToken(),
@@ -247,6 +267,7 @@ function designPayload() {
 async function goToCheckout(btn) {
   if (designInFlight) return;                       // ②двойной клик не плодит переходы
   const myVersion = formVersion;                    // ③версия на момент подтверждения
+  if (!attemptId) attemptId = newAttempt();   // ①фиксируем ДО первого запроса
   designInFlight = true;
   clearProblem();
   const label = btn.textContent;
