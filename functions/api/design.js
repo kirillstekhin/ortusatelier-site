@@ -113,6 +113,10 @@ export const ORTUS = {
 const GRID_KEYS = Object.keys(ORTUS.live);
 const MODE_KEY_RE = { test: /^(sk|rk)_test_/, live: /^(sk|rk)_live_/ };
 
+/* ⛔Куда возвращать при отмене оплаты — по продукту. Общий `/` терял контекст
+   семейного заказа: покупатель Family оказывался на натальной странице. */
+const CANCEL_PATH = { natal: "/", family: "/family.html" };
+
 /** Режим + его таблица, либо код отказа. ⛔Ничего не угадываем и ничего не чиним сами:
     любое расхождение конфигурации — отказ, а не «возьмём что есть». */
 export function modeOf(env) {
@@ -202,17 +206,26 @@ export function validate(rec) {
   return bad;
 }
 
-/** d_ + 26 символов base32 = 128 бит. Charset совместим с client_reference_id. */
-export function newId() {
-  const raw = crypto.getRandomValues(new Uint8Array(16));
+/** ⛔ID ДИЗАЙНА ВЫЧИСЛЯЕТСЯ, А НЕ РОЗЫГРЫВАЕТСЯ (правка 13.09.2026 после аудита юзера).
+    Случайный id означал, что два ОДНОВРЕМЕННЫХ запроса с одной попыткой получают разные
+    id, разные ключи идемпотентности — и создают ДВЕ оплаты. Теперь id = отпечаток пары
+    «попытка + содержимое»: у близнецов он совпадает, и они сходятся на одном объекте.
+    ⚠️Непредсказуемость сохраняется: в попытке 20 случайных символов, наружу id не утекает.
+    `d_` + 26 символов base32, charset совместим с client_reference_id. */
+export async function designIdFor(attempt, fp) {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${attempt}|${fp}`));
+  return "d_" + b32(new Uint8Array(h)).slice(0, 26);
+}
+
+function b32(raw) {
   const A = "abcdefghijklmnopqrstuvwxyz234567";
   let bits = 0, acc = 0, out = "";
   for (const b of raw) {
-    acc = (acc << 8) | b; bits += 8;
+    acc = ((acc << 8) | b) & 0xfff; bits += 8;
     while (bits >= 5) { out += A[(acc >>> (bits - 5)) & 31]; bits -= 5; }
   }
   if (bits > 0) out += A[(acc << (5 - bits)) & 31];
-  return "d_" + out.slice(0, 26);
+  return out;
 }
 
 /* ⚠️Ограничитель частоты — ПЕРВАЯ линия, а не гарантия: Cache API живёт в пределах одного
@@ -395,7 +408,15 @@ export async function onRequestPost({ request, env }) {
   }
 
   // ── ПОВТОР С НЕИЗВЕСТНЫМ РЕЗУЛЬТАТОМ: тот же ключ, ТЕ ЖЕ параметры ──
-  if (att) {
+  if (att) return await linkExisting(env, aKey, att, cfg, attempt);
+
+  return await createAttempt(env, aKey, attempt, cfg, item, content, fp, request);
+}
+
+/** Доводит до конца попытку, у которой результат создания сессии неизвестен.
+    ⚠️Вызывается ДВУМЯ путями: обычным повтором и запросом, ПРОИГРАВШИМ гонку за метку. */
+async function linkExisting(env, aKey, att, cfg, attempt) {
+  {
     if (Date.now() - att.started_ms > AUTO_RETRY_WINDOW_MS) {
       // ③прекращаем АВТОМАТИЧЕСКИЕ повторы: за этим пределом повтор рискует создать
       //   ВТОРУЮ сессию. Дальше — только ручная сверка.
@@ -432,11 +453,17 @@ export async function onRequestPost({ request, env }) {
     }
     return json({ id: att.design_id, payment_link: res.data.url, recovered: true });
   }
+}
 
-  // ── НОВАЯ ПОПЫТКА ──
+/** Создаёт попытку: дизайн → метка → сессия. ⛔Обе записи СОЗДАЮЩИЕ (onlyIf), потому что
+    одновременных запросов с одной попыткой может быть несколько: двойной клик, две вкладки,
+    повтор по таймауту. Проигравший гонку не создаёт вторую оплату, а идёт по метке
+    победителя — тот же ключ, те же параметры, ТА ЖЕ сессия. */
+async function createAttempt(env, aKey, attempt, cfg, item, content, fp, request) {
+  const id = await designIdFor(attempt, fp);
   const rec = {
     schema_version: SCHEMA_VERSION,
-    id: newId(),
+    id,
     created: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
     mode: cfg.mode,            // ⛔запись знает свой режим: тестовую оплату боевой
     product: content.product,  //   фулфилмент печатать не станет
@@ -453,20 +480,33 @@ export async function onRequestPost({ request, env }) {
   if (payload.length > MAX_BODY) return json({ error: "too_large", limit: MAX_BODY }, 413);
 
   // ⛔ЗАПИСЬ ДИЗАЙНА ПЕРВОЙ. Ссылку отдаём только если дизайн реально лёг в хранилище.
+  const dKey = `designs/${id}.json`;
   let put;
   try {
-    put = await env.DESIGNS.put(`designs/${rec.id}.json`, payload, {
+    put = await env.DESIGNS.put(dKey, payload, {
       httpMetadata: { contentType: "application/json" },
       onlyIf: { etagDoesNotMatch: "*" },
     });
   } catch (e) {
-    console.log("design store write failed", rec.id, e && e.name);
+    console.log("design store write failed", id, e && e.name);
     return json({ error: "storage_unavailable" }, 503);
   }
   // ⛔R2 при невыполненном onlyIf НЕ бросает, а возвращает null (поймано живой проверкой).
+  //   Раньше это считалось аварией. С вычисляемым id объект по этому ключу может уже
+  //   существовать ЗАКОННО: это наш же повтор или запрос-близнец с той же попыткой и тем же
+  //   содержимым. Убеждаемся, что лежит именно наше, и идём дальше.
   if (!put) {
-    console.log("design store write skipped (precondition failed)", rec.id);
-    return json({ error: "storage_unavailable" }, 503);
+    let existing;
+    try {
+      existing = await readJson(env.DESIGNS, dKey);
+    } catch (e) {
+      console.log("existing design read failed", id, e && e.name);
+      return json({ error: "storage_unavailable" }, 503);
+    }
+    if (!existing || existing.attempt !== attempt) {
+      console.log("design id collision", id);
+      return json({ error: "design_conflict" }, 409);
+    }
   }
 
   // ②ПАРАМЕТРЫ ФИКСИРУЮТСЯ ЗДЕСЬ И БОЛЬШЕ НЕ ПЕРЕСЧИТЫВАЮТСЯ. expires_at особенно:
@@ -476,34 +516,64 @@ export async function onRequestPost({ request, env }) {
     mode: "payment",
     "line_items[0][price]": item.price,
     "line_items[0][quantity]": 1,
-    client_reference_id: rec.id,
+    client_reference_id: id,
     expires_at: Math.floor(Date.now() / 1000) + SESSION_TTL_S,
     success_url: `${origin}/thank-you.html?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${origin}/`,
+    // ⛔ОТМЕНА ВОЗВРАЩАЕТ ТУДА, ОТКУДА ПРИШЛИ. Общий `/` уводил покупателя Family на
+    //   натальную страницу — заказ семьи просто терялся (найдено аудитом 13.09).
+    cancel_url: `${origin}${CANCEL_PATH[content.product] || "/"}`,
     "shipping_address_collection[allowed_countries][0]": "GB",
     billing_address_collection: "required",
   };
-  const idem_key = `design_${rec.id}`;
-  const marker = { attempt, mode: cfg.mode, fp, design_id: rec.id, idem_key, params, started_ms: Date.now() };
+  // ⛔КЛЮЧ ИДЕМПОТЕНТНОСТИ — ОТ ПОПЫТКИ, а не от id дизайна. Он обязан быть одинаковым у
+  //   всех запросов одной попытки, включая одновременные.
+  const idem_key = `att_${attempt}`;
+  const marker = { attempt, mode: cfg.mode, fp, design_id: id, idem_key, params, started_ms: Date.now() };
 
-  // ⛔МЕТКА ДО ВЫЗОВА STRIPE. Потеряется ответ — повтор найдёт метку, возьмёт ТЕ ЖЕ
-  //   параметры и ТОТ ЖЕ ключ, и Stripe вернёт уже созданную сессию, а не вторую.
+  // ⛔МЕТКА ДО ВЫЗОВА STRIPE И ТОЛЬКО СОЗДАНИЕМ. Потеряется ответ — повтор найдёт метку,
+  //   возьмёт ТЕ ЖЕ параметры и ТОТ ЖЕ ключ. Проиграем гонку — увидим null и пойдём по
+  //   чужой метке вместо того, чтобы затереть её своей и создать вторую оплату.
+  let mput;
   try {
-    await env.DESIGNS.put(aKey, JSON.stringify(marker), { httpMetadata: { contentType: "application/json" } });
+    mput = await env.DESIGNS.put(aKey, JSON.stringify(marker), {
+      httpMetadata: { contentType: "application/json" },
+      onlyIf: { etagDoesNotMatch: "*" },
+    });
   } catch (e) {
     console.log("attempt marker write failed", attempt, e && e.name);
     return json({ error: "storage_unavailable" }, 503);
   }
+  if (!mput) {
+    let winner;
+    try {
+      winner = await readJson(env.DESIGNS, aKey);
+    } catch (e) {
+      console.log("winner marker read failed", attempt, e && e.name);
+      return json({ error: "storage_unavailable" }, 503);
+    }
+    if (!winner) return json({ error: "storage_unavailable" }, 503);
+    console.log("attempt race lost, following winner", attempt);
+    if (winner.session_url) {
+      return json({ id: winner.design_id, payment_link: winner.session_url, repeat: true });
+    }
+    return await linkExisting(env, aKey, winner, cfg, attempt);
+  }
 
   const res = await stripe(env, "checkout/sessions", params, idem_key);
+  if (res.status === 409) {
+    // ⚠️Stripe: по этому ключу уже идёт запрос. Второй такой же сейчас в полёте — ссылку
+    //   не выдумываем, клиент повторит и получит ту же сессию.
+    console.log("stripe idempotent request in flight", attempt);
+    return json({ error: "checkout_busy" }, 503);
+  }
   if (!res.ok || !res.data.url) {
-    console.log("stripe create failed", rec.id, res.status);
+    console.log("stripe create failed", id, res.status);
     return json({ error: "checkout_unavailable" }, 503);   // ссылки нет
   }
   // ⛔ТРЕТЬЯ СВЕРКА РЕЖИМА: объявленный ≠ режим СОЗДАННОЙ сессии — ссылку не отдаём.
   //   Ключ и таблица уже сошлись выше; это последнее место, где расхождение ещё видно.
   if (res.data.livemode !== (cfg.mode === "live")) {
-    console.log("session mode mismatch", rec.id, res.data.livemode);
+    console.log("session mode mismatch", id, res.data.livemode);
     return json({ error: "not_configured", detail: "mode_session_mismatch" }, 503);
   }
   try {
@@ -512,11 +582,11 @@ export async function onRequestPost({ request, env }) {
   } catch (e) {
     // ③сессия создана, связь не записана. Ссылку НЕ отдаём: покупатель заплатит, а мы
     //   не будем знать, за что. Повтор восстановит связь тем же ключом.
-    console.log("session link write failed", rec.id, e && e.name);
+    console.log("session link write failed", id, e && e.name);
     return json({ error: "storage_unavailable" }, 503);
   }
 
-  return json({ id: rec.id, payment_link: res.data.url });
+  return json({ id, payment_link: res.data.url });
 }
 
 /* ⛔ЧТЕНИЯ НЕТ НАМЕРЕННО. PUT и DELETE Pages сам отбивает 405, а вот GET — НЕТ: проверено

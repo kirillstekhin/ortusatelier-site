@@ -69,6 +69,11 @@
 try {
   sessionStorage.removeItem('ortus_natal_draft');
   sessionStorage.removeItem('ortus_family_draft');
+  /* ⛔ПОПЫТКУ СНИМАЕМ ВМЕСТЕ С ЧЕРНОВИКОМ. Она переживает перезагрузку намеренно — чтобы
+     повтор не создал вторую оплату, — но после заказа обязана исчезнуть: иначе следующий
+     заказ в той же вкладке пошёл бы по старой попытке и получил бы отказ вместо оплаты. */
+  sessionStorage.removeItem('ortus_natal_draft_attempt');
+  sessionStorage.removeItem('ortus_family_draft_attempt');
 } catch (e) {}
 </script>
 </body>

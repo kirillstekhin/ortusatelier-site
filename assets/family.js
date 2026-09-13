@@ -97,6 +97,7 @@ let problemBox = null;
 function bumpVersion() {
   formVersion++;
   attemptId = null;   // ①изменили данные — попытка новая
+  saveAttempt();      //   и из черновика её тоже убираем
 }
 /* ①ИДЕНТИФИКАТОР ПОПЫТКИ. Фиксируется ДО первого запроса и держится неизменным при
    повторах — иначе каждый повтор создавал бы новый дизайн, у каждого дубля был бы свой
@@ -170,6 +171,28 @@ function restoreDraft() {
     return d;
   } catch (e) { return null; }
 }
+/* ⛔ПОПЫТКА ПЕРЕЖИВАЕТ ПЕРЕЗАГРУЗКУ (правка 13.09.2026 после аудита юзера). Раньше
+   `attemptId` жил только в памяти вкладки: после потерянного ответа и F5 повтор заводил
+   НОВУЮ попытку, хотя сессия по прежней уже могла существовать — и покупатель получал
+   вторую оплату за тот же заказ. Теперь попытка лежит рядом с черновиком: тот же срок,
+   та же очистка. Смена персонализации (`bumpVersion`) по-прежнему её сбрасывает. */
+const ATTEMPT_DRAFT_KEY = DRAFT_KEY + '_attempt';
+function saveAttempt() {
+  try {
+    if (attemptId) sessionStorage.setItem(ATTEMPT_DRAFT_KEY, JSON.stringify({ a: attemptId, _at: Date.now() }));
+    else sessionStorage.removeItem(ATTEMPT_DRAFT_KEY);
+  } catch (e) {}
+}
+function restoreAttempt() {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(ATTEMPT_DRAFT_KEY) || 'null');
+    if (!d || !d.a || !d._at || Date.now() - d._at > DRAFT_TTL_MS) {
+      sessionStorage.removeItem(ATTEMPT_DRAFT_KEY);
+      return;
+    }
+    attemptId = d.a;
+  } catch (e) {}
+}
 
 function designPayload(fam) {
   const members = [...document.querySelectorAll('#fc-members .mrow')].map(r => ({
@@ -183,7 +206,7 @@ function designPayload(fam) {
 async function goToCheckout(btn, fam) {
   if (designInFlight) return;                       // ②двойной клик
   const myVersion = formVersion;                    // ③версия на момент подтверждения
-  if (!attemptId) attemptId = newAttempt();   // ①фиксируем ДО первого запроса
+  if (!attemptId) { attemptId = newAttempt(); saveAttempt(); }   // ①фиксируем ДО первого запроса
   designInFlight = true;
   clearProblem();
   const label = btn.textContent;
@@ -219,6 +242,7 @@ async function goToCheckout(btn, fam) {
        (`goToCheckout` заводит её сам). Введённое остаётся и сохраняется в черновике —
        ничего перенабирать не нужно. */
     attemptId = null;
+    saveAttempt();
     saveDraft();
     showProblem(EXPIRED_MSG[data.error] || EXPIRED_MSG.checkout_expired);
     return;
@@ -315,6 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     `<button type="button" class="cfg-opt${c === 'gold' ? ' active' : ''}" data-color="${c}">${c[0].toUpperCase() + c.slice(1)}</button>`).join('');
   /* ⑥ВОЗВРАТ ИЗ STRIPE (или «назад») НЕ ДОЛЖЕН СТИРАТЬ СЕМЬЮ. Для Family это дороже
      всего: заново вводить шесть имён с датами — ровно та боль, ради которой всё затевалось. */
+  restoreAttempt();     // ⚠️до восстановления формы: попытка принадлежит ИМЕННО этому черновику
   const draft = restoreDraft();
   if (draft && draft.rows && draft.rows.length >= 2) {
     draft.rows.forEach(r => addRow(r.name || '', r.date || ''));

@@ -197,6 +197,7 @@ let problemBox = null;
 function bumpVersion() {
   formVersion++;
   attemptId = null;   // ①изменили данные — попытка новая
+  saveAttempt();      //   и из черновика её тоже убираем
 }
 /* ①ИДЕНТИФИКАТОР ПОПЫТКИ. Фиксируется ДО первого запроса и держится неизменным при
    повторах — иначе каждый повтор создавал бы новый дизайн, у каждого дубля был бы свой
@@ -264,6 +265,28 @@ function restoreDraft() {
     return true;
   } catch (e) { return false; }
 }
+/* ⛔ПОПЫТКА ПЕРЕЖИВАЕТ ПЕРЕЗАГРУЗКУ (правка 13.09.2026 после аудита юзера). Раньше
+   `attemptId` жил только в памяти вкладки: после потерянного ответа и F5 повтор заводил
+   НОВУЮ попытку, хотя сессия по прежней уже могла существовать — и покупатель получал
+   вторую оплату за тот же заказ. Теперь попытка лежит рядом с черновиком: тот же срок,
+   та же очистка. Смена персонализации (`bumpVersion`) по-прежнему её сбрасывает. */
+const ATTEMPT_DRAFT_KEY = DRAFT_KEY + '_attempt';
+function saveAttempt() {
+  try {
+    if (attemptId) sessionStorage.setItem(ATTEMPT_DRAFT_KEY, JSON.stringify({ a: attemptId, _at: Date.now() }));
+    else sessionStorage.removeItem(ATTEMPT_DRAFT_KEY);
+  } catch (e) {}
+}
+function restoreAttempt() {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(ATTEMPT_DRAFT_KEY) || 'null');
+    if (!d || !d.a || !d._at || Date.now() - d._at > DRAFT_TTL_MS) {
+      sessionStorage.removeItem(ATTEMPT_DRAFT_KEY);
+      return;
+    }
+    attemptId = d.a;
+  } catch (e) {}
+}
 
 function designPayload() {
   return {
@@ -279,7 +302,7 @@ function designPayload() {
 async function goToCheckout(btn) {
   if (designInFlight) return;                       // ②двойной клик не плодит переходы
   const myVersion = formVersion;                    // ③версия на момент подтверждения
-  if (!attemptId) attemptId = newAttempt();   // ①фиксируем ДО первого запроса
+  if (!attemptId) { attemptId = newAttempt(); saveAttempt(); }   // ①фиксируем ДО первого запроса
   designInFlight = true;
   clearProblem();
   const label = btn.textContent;
@@ -316,6 +339,7 @@ async function goToCheckout(btn) {
        (`goToCheckout` заводит её сам). Введённое остаётся и сохраняется в черновике —
        ничего перенабирать не нужно. */
     attemptId = null;
+    saveAttempt();
     saveDraft();
     showProblem(EXPIRED_MSG[data.error] || EXPIRED_MSG.checkout_expired);
     return;
@@ -409,6 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
      в sessionStorage перед уходом на оплату и поднимается здесь. ⚠️Место считается
      привязанным только если в черновике есть КООРДИНАТЫ — иначе гейт места попросит
      подтвердить заново, и правильно: название без координат ничего не гарантирует. */
+  restoreAttempt();     // ⚠️до восстановления формы: попытка принадлежит ИМЕННО этому черновику
   if (restoreDraft()) {
     const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
     set('ns-date', state.dateStr); set('ns-time', state.timeStr);
