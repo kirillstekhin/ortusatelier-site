@@ -215,13 +215,20 @@ function clearProblem() { if (problemBox) problemBox.hidden = true; }
 
 const DRAFT_KEY = 'ortus_natal_draft';
 function saveDraft() {
-  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch (e) {}
+  try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...state, _at: Date.now() })); } catch (e) {}
 }
+const DRAFT_TTL_MS = 24 * 3600 * 1000;   /* ⚠️даже внутри вкладки не держим сутками */
+
 function restoreDraft() {
   /* ⚠️Чтобы возврат из Stripe (или «назад») не стирал введённое. */
   try {
     const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
     if (!d) return false;
+    if (!d._at || Date.now() - d._at > DRAFT_TTL_MS) {   /* просрочен — стираем, не поднимаем */
+      sessionStorage.removeItem(DRAFT_KEY);
+      return false;
+    }
+    delete d._at;
     Object.assign(state, d);
     return true;
   } catch (e) { return false; }

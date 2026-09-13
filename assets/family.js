@@ -119,6 +119,7 @@ const DRAFT_KEY = 'ortus_family_draft';
 function saveDraft() {
   try {
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+      _at: Date.now(),
       state,
       family: document.getElementById('fc-family').value,
       rows: [...document.querySelectorAll('#fc-members .mrow')].map(r => ({
@@ -126,10 +127,16 @@ function saveDraft() {
     }));
   } catch (e) {}
 }
+const DRAFT_TTL_MS = 24 * 3600 * 1000;   /* ⚠️даже внутри вкладки не держим сутками */
+
 function restoreDraft() {
   try {
     const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
     if (!d) return null;
+    if (!d._at || Date.now() - d._at > DRAFT_TTL_MS) {   /* просрочен — стираем, не поднимаем */
+      sessionStorage.removeItem(DRAFT_KEY);
+      return null;
+    }
     Object.assign(state, d.state || {});
     return d;
   } catch (e) { return null; }
