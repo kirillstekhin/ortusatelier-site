@@ -232,7 +232,27 @@ async function rateLimited(ip) {
   } catch { return false; }
 }
 
-const ATTEMPT_RE = /^a_[a-z0-9]{16,40}$/;
+/* ⛔СРОК ПОПЫТКИ ЗАШИТ В САМ ИДЕНТИФИКАТОР, и это принципиально: проверять его надо и
+   ТОГДА, КОГДА ЗАПИСИ ПОПЫТКИ УЖЕ НЕТ. Иначе старый запрос от давно открытой вкладки или
+   от автоматического повтора выглядел бы новым заказом и создавал бы оплату, которую
+   никто осознанно не подтверждал. Хранилище тут помочь не может — надгробие когда-нибудь
+   снимут, а идентификатор у клиента останется.
+   `a_` + 8 символов base36 (секунды эпохи) + 16–32 случайных.
+   ⚠️Это НЕ подпись и не выдаётся за неё: подделать метку времени клиент может. Но подделка
+   означает «оформить новый заказ», что и так разрешено, а защищаемся мы от ПРОТУХШЕГО
+   ПОВТОРА — у него метка времени ровно та, старая. */
+const ATTEMPT_RE = /^a_([0-9a-z]{8})([0-9a-z]{16,32})$/;
+const ATTEMPT_TTL_S = 7 * 24 * 3600;      // столько же, сколько живёт сам дизайн
+const CLOCK_SKEW_S = 3600;                // часы клиента могут врать — час прощаем
+
+/** Возраст попытки в секундах, либо null если идентификатор не разобрать. */
+function attemptAge(attempt) {
+  const m = ATTEMPT_RE.exec(attempt || "");
+  if (!m) return null;
+  const ts = parseInt(m[1], 36);
+  if (!Number.isFinite(ts) || ts <= 0) return null;
+  return Math.floor(Date.now() / 1000) - ts;
+}
 const SESSION_TTL_S = 23 * 3600;          // <24ч: Stripe не принимает больше суток
 /* ⚠️НЕ «срок жизни ключа у Stripe», а НАШ предел автоматических повторов: после него
    повторяем не вслепую, а руками. Момент удаления ключа Stripe нам не объявляет. */
@@ -308,7 +328,15 @@ export async function onRequestPost({ request, env }) {
 
   // ①ПОПЫТКА. Клиент фиксирует её ДО первого запроса и держит неизменной при повторах.
   const attempt = (body && body.attempt) || "";
-  if (!ATTEMPT_RE.test(attempt)) return json({ error: "bad_attempt" }, 400);
+  const age = attemptAge(attempt);
+  if (age === null || age < -CLOCK_SKEW_S) return json({ error: "bad_attempt" }, 400);
+  if (age > ATTEMPT_TTL_S) {
+    // ⛔ПРОТУХШАЯ ПОПЫТКА — ОТКАЗ, а не новый заказ. Работает и после снятия надгробия:
+    //   срок лежит в самом идентификаторе. Новая попытка появится только после того, как
+    //   покупатель подтвердит форму заново.
+    console.log("attempt expired", attempt, `${(age / 86400).toFixed(1)}d`);
+    return json({ error: "attempt_expired" }, 410);
+  }
 
   // ⛔РЕЖИМ — ДО ВСЕГО ОСТАЛЬНОГО. Незачем класть в хранилище запись, оплатить которую
   //   всё равно нечем: без согласованного режима ссылки не будет.
@@ -354,7 +382,17 @@ export async function onRequestPost({ request, env }) {
   }
 
   // ── ПОВТОР ПО ИЗВЕСТНОМУ РЕЗУЛЬТАТУ: та же сессия, ничего не создаём ──
-  if (att && att.session_url) return json({ id: att.design_id, payment_link: att.session_url, repeat: true });
+  if (att && att.session_url) {
+    // ⛔ЗАВЕДОМО ИСТЁКШУЮ ССЫЛКУ НЕ ОТДАЁМ. Срок сессии мы сами записали в параметры —
+    //   спрашивать Stripe незачем. Покупателю нужна не «страница про истёкшую сессию», а
+    //   понятное «подтвердите заново»: данные у него целы, но новую попытку заводит ОН.
+    const exp = Number((att.params || {}).expires_at || 0);
+    if (exp && Date.now() / 1000 >= exp) {
+      console.log("checkout expired", attempt);
+      return json({ error: "checkout_expired" }, 410);
+    }
+    return json({ id: att.design_id, payment_link: att.session_url, repeat: true });
+  }
 
   // ── ПОВТОР С НЕИЗВЕСТНЫМ РЕЗУЛЬТАТОМ: тот же ключ, ТЕ ЖЕ параметры ──
   if (att) {
@@ -373,12 +411,24 @@ export async function onRequestPost({ request, env }) {
       console.log("session mode mismatch on retry", attempt, res.data.livemode);
       return json({ error: "not_configured", detail: "mode_session_mismatch" }, 503);
     }
+    // ⭐СВЯЗЬ ЗАПИСЫВАЕМ В ЛЮБОМ СЛУЧАЕ, даже если ссылку отдавать уже нельзя: без неё
+    //   фулфилмент и GC не знают, что это за сессия, и стоят на месте.
     const linked = { ...att, session_id: res.data.id, session_url: res.data.url };
     try {
       await env.DESIGNS.put(aKey, JSON.stringify(linked), { httpMetadata: { contentType: "application/json" } });
     } catch (e) {
       console.log("attempt link write failed", attempt, e && e.name);
       return json({ error: "storage_unavailable" }, 503);   // связь не восстановлена — фулфилмент и GC стоят
+    }
+    if (res.data.status === "expired") {
+      console.log("recovered session already expired", attempt);
+      return json({ error: "checkout_expired" }, 410);
+    }
+    if (res.data.status && res.data.status !== "open") {
+      // Сессия завершена — скорее всего уже оплачена. Ни ссылки, ни новой оплаты:
+      // такое разбирают руками, а покупателю честно говорим, что заказ уже принят.
+      console.log("recovered session not open", attempt, res.data.status);
+      return json({ error: "already_paid" }, 409);
     }
     return json({ id: att.design_id, payment_link: res.data.url, recovered: true });
   }

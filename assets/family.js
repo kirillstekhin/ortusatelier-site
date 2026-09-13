@@ -109,9 +109,24 @@ function bumpVersion() {
    ⛔Сбрасывается на ЛЮБОМ изменении персонализации (см. bumpVersion): изменили данные —
    это другая покупка, и сессия у неё должна быть своя. */
 let attemptId = null;
+/* ⛔МЕТКА ВРЕМЕНИ ВНУТРИ ИДЕНТИФИКАТОРА. Сервер обязан уметь отбить протухшую попытку
+   даже когда её записи в хранилище уже нет, — значит срок надо нести с собой.
+   `a_` + 8 символов base36 (секунды) + 20 случайных. Формат сверяется с ATTEMPT_RE. */
+const EXPIRED_MSG = {
+  design_expired:
+    'This order waited too long, so we cleared the saved copy. Everything you typed is still here — press the button again to confirm it and we will open a fresh checkout.',
+  attempt_expired:
+    'This order waited too long to be paid. Everything you typed is still here — press the button again to confirm it and we will open a fresh checkout.',
+  checkout_expired:
+    'Your checkout window has closed. Everything you typed is still here — press the button again to confirm it and we will open a fresh checkout.',
+  already_paid:
+    'This order has already been paid. Check your inbox for the confirmation — if it is not there, reply to us and we will sort it out.',
+};
+
 function newAttempt() {
-  const r = crypto.getRandomValues(new Uint8Array(12));
-  return 'a_' + [...r].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+  const t = Math.floor(Date.now() / 1000).toString(36).padStart(8, '0');
+  const r = crypto.getRandomValues(new Uint8Array(10));
+  return 'a_' + t + [...r].map(b => b.toString(36).padStart(2, '0')).join('');
 }
 
 
@@ -203,12 +218,14 @@ async function goToCheckout(btn, fam) {
     showProblem('You changed something while we were saving. Check the family and press the button again.');
     return;
   }
-  if (res.status === 410 && data.error === 'design_expired') {
-    /* Дизайн этой попытки удалён по сроку хранения. Ссылки на него мы не даём и новую
-       оплату по старой попытке не создаём — покупатель подтверждает заново, и это будет
-       новый дизайн. Введённое остаётся на месте. */
-    attemptId = newAttempt();
-    showProblem('This order has been waiting too long, so we cleared the saved copy. Everything you typed is still here — press the button again to confirm it.');
+  if (res.status === 410 || (res.status === 409 && data.error === 'already_paid')) {
+    /* ⛔СРОК ВЫШЕЛ — И НИКАКОГО АВТОМАТИЧЕСКОГО ПЕРЕХОДА К ОПЛАТЕ. Попытку обнуляем, но
+       новую НЕ заводим: она появится только когда покупатель подтвердит форму заново
+       (`goToCheckout` заводит её сам). Введённое остаётся и сохраняется в черновике —
+       ничего перенабирать не нужно. */
+    attemptId = null;
+    saveDraft();
+    showProblem(EXPIRED_MSG[data.error] || EXPIRED_MSG.checkout_expired);
     return;
   }
   if (!res.ok || !data.id || !data.payment_link) {
