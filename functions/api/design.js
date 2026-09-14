@@ -415,8 +415,20 @@ export async function onRequestPost({ request, env }) {
 
 /** Доводит до конца попытку, у которой результат создания сессии неизвестен.
     ⚠️Вызывается ДВУМЯ путями: обычным повтором и запросом, ПРОИГРАВШИМ гонку за метку. */
-async function linkExisting(env, aKey, att, cfg, attempt) {
+async function linkExisting(env, aKey, att, cfg, attempt, fp) {
   {
+    /* ⛔СОДЕРЖИМОЕ СВЕРЯЕМ И ЗДЕСЬ (дефект найден стендом 15.09.2026). Проверка ④ стоит в
+       основном пути и ловит последовательный случай. Но в ГОНКЕ сюда приходят мимо неё:
+       на момент чтения метки её ещё не было, обе отправки пошли создавать, и проигравший
+       попадал прямо в «следуй за победителем». Содержимое при этом могло быть ДРУГИМ —
+       и покупатель получал ссылку на ЧУЖОЙ макет. Это не косметика: он заплатил бы за не
+       своё, а мы напечатали бы чужое посвящение.
+       ⚠️`fp === undefined` — вызов старого образца; тогда не сверяем, чтобы не сломать
+       путь, где отпечаток заведомо совпал (после ④). */
+    if (fp !== undefined && att.fp !== fp) {
+      console.log("attempt race rebound refused", attempt);
+      return json({ error: "attempt_content_changed" }, 409);
+    }
     if (Date.now() - att.started_ms > AUTO_RETRY_WINDOW_MS) {
       // ③прекращаем АВТОМАТИЧЕСКИЕ повторы: за этим пределом повтор рискует создать
       //   ВТОРУЮ сессию. Дальше — только ручная сверка.
@@ -552,11 +564,21 @@ async function createAttempt(env, aKey, attempt, cfg, item, content, fp, request
       return json({ error: "storage_unavailable" }, 503);
     }
     if (!winner) return json({ error: "storage_unavailable" }, 503);
+    /* ⛔СОДЕРЖИМОЕ СВЕРЯЕМ ДО ВСЕГО ОСТАЛЬНОГО (дефект найден стендом 15.09.2026). Здесь
+       был прямой возврат ссылки победителя, если она уже готова, — и он обходил и проверку
+       ④, и сверку внутри `linkExisting`. В гонке двух отправок с ОДНИМ `attempt`, но РАЗНОЙ
+       персонализацией проигравший получал ссылку на ЧУЖОЙ макет: заплатил бы за не своё,
+       а напечатали бы чужое посвящение. Отказ здесь — тот же, что в последовательном
+       случае, и по той же причине: старую ссылку под новое содержимое не отдаём. */
+    if (winner.fp !== fp) {
+      console.log("attempt race rebound refused", attempt);
+      return json({ error: "attempt_content_changed" }, 409);
+    }
     console.log("attempt race lost, following winner", attempt);
     if (winner.session_url) {
       return json({ id: winner.design_id, payment_link: winner.session_url, repeat: true });
     }
-    return await linkExisting(env, aKey, winner, cfg, attempt);
+    return await linkExisting(env, aKey, winner, cfg, attempt, fp);
   }
 
   const res = await stripe(env, "checkout/sessions", params, idem_key);
