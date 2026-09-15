@@ -4,7 +4,7 @@
    Отличия от SKN: ①превью в браузере НЕТ (рендерер натальной — Python, «preview by email
    before we print» — честное обещание конвейера); ②гейт перед оплатой ВСЕГДА показывает
    сводку (дата+время+место+имя): у натальной три критичных поля против одного у SKN,
-   один лишний клик дешевле напечатанного дефолта (класс Emily ord_14413913);
+   один лишний клик дешевле напечатанного дефолта вместо места покупателя;
    ③FRAMED-яруса нет — Print и Classic (BFP снят с производства, петля 25.08). */
 
 const PRICES = {
@@ -77,7 +77,7 @@ function refresh() {
     b.querySelector('.f-price').textContent = `£${PRICES[b.dataset.frametype][state.size].toFixed(2)}`);
 }
 
-/* ── место: open-meteo, UK-выдача первой (урок Berwick 14.08), IANA из результата ── */
+/* ── место: open-meteo, UK-выдача первой (урок 14.08: в общей выдаче британского места может не быть вовсе), IANA из результата ── */
 function attachGeocode() {
   const input = document.getElementById('ns-place');
   const list = document.getElementById('ns-place-list');
@@ -119,7 +119,7 @@ function attachGeocode() {
   }
 
   /* ⚠ «CITY, UK» ЛОМАЛ ПРИВЯЗКУ (08.09.2026, найдено прогоном прода). open-meteo ищет по
-     имени места: «Harrogate, UK», «Bristol, UK» → ПУСТО («London, England» — находит).
+     имени места: «York, UK», «Bristol, UK» → ПУСТО («London, England» — находит).
      Плейсхолдер сам подсказывает «City, country», и самый естественный британский ввод
      молча оставлял место непривязанным → «Birthplace first», продажи нет. Нет выдачи —
      повторяем по части до запятой; UK-first в lookup сам ставит британский вариант первым.
