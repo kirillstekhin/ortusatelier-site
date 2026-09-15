@@ -1,8 +1,9 @@
 /* Ortus Atelier — конфигуратор натальной карты (03.09.2026).
    Родословная: site/assets/starmap.js (SKN) — геокод open-meteo (UK-first, там же IANA
    для Z-токена), сборка design-кода, переход в Stripe payment link с client_reference_id.
-   Отличия от SKN: ①превью в браузере НЕТ (рендерер натальной — Python, «preview by email
-   before we print» — честное обещание конвейера); ②гейт перед оплатой ВСЕГДА показывает
+   Отличия от SKN: ①превью в браузере — порт печатного рендера (assets/natal-preview.js, 15.09.2026);
+   письмо с превью ПЕЧАТНОГО файла до печати осталось — это обещание конвейера,
+   экранное превью его не заменяет; ②гейт перед оплатой ВСЕГДА показывает
    сводку (дата+время+место+имя): у натальной три критичных поля против одного у SKN,
    один лишний клик дешевле напечатанного дефолта вместо места покупателя;
    ③FRAMED-яруса нет — Print и Classic (BFP снят с производства, петля 25.08). */
@@ -75,6 +76,24 @@ function refresh() {
   document.getElementById('ns-colors').hidden = state.frameType !== 'classic';
   document.querySelectorAll('#ns-formats .cfg-opt').forEach(b =>
     b.querySelector('.f-price').textContent = `£${PRICES[b.dataset.frametype][state.size].toFixed(2)}`);
+  renderPreview();
+}
+
+/* ── живое превью листа (assets/natal-preview.js — порт печатного рендера) ──
+   ⚠️До привязки места небо считается над Лондоном, но на листе вместо места плейсхолдер,
+   а координат и знака асцендента нет: чужое место не должно выглядеть как выбранное. */
+const PREVIEW_FALLBACK = { lat: 51.5074, lon: -0.1278, iana: 'Europe/London' };
+function renderPreview() {
+  if (!window.OrtusNatal) return;
+  const bound = placeBound && state.lat != null && state.lon != null;
+  window.OrtusNatal.show({
+    dateStr: state.dateStr, timeStr: state.timeStr,
+    lat: bound ? state.lat : PREVIEW_FALLBACK.lat,
+    lon: bound ? state.lon : PREVIEW_FALLBACK.lon,
+    tz: bound ? state.tz : tzOffsetHours(PREVIEW_FALLBACK.iana, state.dateStr, state.timeStr),
+    place: state.place, placeBound: bound, name: state.name,
+    theme: state.theme, frameType: state.frameType, size: state.size,
+  });
 }
 
 /* ── место: open-meteo, UK-выдача первой (урок 14.08: в общей выдаче британского места может не быть вовсе), IANA из результата ── */
@@ -388,6 +407,7 @@ function attachControls() {
   document.getElementById('ns-name').addEventListener('input', e => {
     state.name = e.target.value.slice(0, 40);
     bumpVersion();                 // ⚠️имя идёт мимо refresh() — версию поднимаем здесь
+    renderPreview();
   });
 
   const wireGroup = (sel, key, dataAttr) => document.querySelectorAll(sel).forEach(b =>

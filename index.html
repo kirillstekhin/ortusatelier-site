@@ -191,6 +191,33 @@
   .prodtab.active { color: var(--ink); background: rgba(192,122,74,.10); box-shadow: inset 0 0 0 1px var(--copper); }
   .prodtab .short { display: none; }
   @media (max-width: 520px) { .prodtab .long { display: none; } .prodtab .short { display: inline; } }
+
+  /* живое превью натальной (assets/natal-preview.js): слева лист, справа форма — раскладка SKN */
+  .studio { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px); gap: 44px;
+            align-items: start; margin-top: 48px; }
+  .studio .cfg { margin: 0; max-width: none; }
+  .np-col { position: sticky; top: 24px; }
+  .np-pv { position: relative; }
+  .np-pv:empty { aspect-ratio: 3 / 4; border-radius: 6px; background: var(--frost);
+                 box-shadow: inset 0 0 0 1px var(--hairline); }
+  .np-pv svg { display: block; width: 100%; height: auto; border-radius: 6px;
+               box-shadow: 0 24px 48px rgba(0,0,0,.5), 0 0 0 1px rgba(230,239,232,.08); }
+  .np-chip { margin-top: 14px; text-align: center; font: 400 11px/1.6 'IBM Plex Mono', monospace;
+             letter-spacing: .14em; text-transform: uppercase; color: var(--helper); }
+  .np-pv .np-faint { animation: np-fade .6s ease both; }
+  @keyframes np-fade { from { opacity: 0; } to { opacity: 1; } }
+  /* телефон: превью прилипает к верху и сжимается, пока листаешь форму (механика SKN).
+     Блочная раскладка, а не сетка: у элемента сетки sticky заперт в своей ячейке */
+  @media (max-width: 980px) {
+    .studio { display: block; }
+    .np-col { position: sticky; top: 0; z-index: 5; margin: 0 -24px 24px; padding: 10px 24px 8px;
+              background: var(--canvas); transition: box-shadow .22s ease; }
+    .np-pv { max-width: 440px; margin: 0 auto; transition: max-width .22s ease; }
+    .np-col.is-stuck { box-shadow: 0 14px 24px rgba(4,6,5,.55); }
+    .np-col.is-stuck .np-pv { max-width: 46vw; }
+    .np-col.is-stuck .np-chip { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .np-pv .np-faint { animation: none; } .np-pv, .np-col { transition: none; } }
 </style>
 </head>
 <body>
@@ -263,6 +290,11 @@
     <h2>The minute, the place, the name.</h2>
     <p class="sub">Everything we need to draw your sky. Before anything is printed,
     a preview lands in your inbox — we’ll fix anything.</p>
+    <div class="studio">
+      <div class="np-col">
+        <div class="np-pv" id="np-preview" aria-hidden="true"></div>
+        <div class="np-chip" id="np-chip"></div>
+      </div>
     <div class="cfg card">
       <nav class="prodtabs" aria-label="Product">
         <a class="prodtab active" href="#create" aria-current="page">✦ Birth chart</a>
@@ -290,6 +322,7 @@
         <div class="cfg-note">✓&nbsp;Free preview by email before we print · Framed by hand in the UK · Dispatched in 2–4 working days · Free delivery to UK addresses only</div>
       </div>
     </div>
+    </div>
   </section>
 
   <footer>
@@ -301,6 +334,7 @@
     <a href="privacy.html" style="color:inherit">Privacy</a>
   </footer>
 </div>
-<script src="assets/ortus.js?v=9"></script>
+<script src="assets/natal-preview.js?v=1"></script>
+<script src="assets/ortus.js?v=10"></script>
 </body>
 </html>
