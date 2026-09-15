@@ -109,6 +109,16 @@
     word-break: break-word; }
   .cfg-gate-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
   .cfg-gate-row .btn { padding: 9px 18px; font-size: 13.5px; }
+  /* вкладки продуктов — как Star Map | The Moon на skythatnight.com */
+  .prodtabs { display: flex; gap: 10px; margin-bottom: 26px; }
+  .prodtab { flex: 1; text-align: center; padding: 11px 12px; border-radius: 10px;
+    font: 400 12px/1.2 'IBM Plex Mono', monospace; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); text-decoration: none; box-shadow: inset 0 0 0 1px var(--hairline);
+    transition: color .2s, background-color .2s, box-shadow .2s; }
+  .prodtab:hover { color: var(--ink); box-shadow: inset 0 0 0 1px rgba(192,122,74,.55); }
+  .prodtab.active { color: var(--ink); background: rgba(192,122,74,.10); box-shadow: inset 0 0 0 1px var(--copper); }
+  .prodtab .short { display: none; }
+  @media (max-width: 520px) { .prodtab .long { display: none; } .prodtab .short { display: inline; } }
   footer { margin-top: 130px; padding: 36px 0 44px; text-align: center;
     font: 400 11px/1.9 'IBM Plex Mono', monospace; letter-spacing: .16em;
     text-transform: uppercase; color: var(--helper);
@@ -165,6 +175,10 @@
     <p class="sub">First names and birthdays — the sky knows the rest. A preview lands in your
     inbox before anything is printed.</p>
     <div class="cfg card">
+      <nav class="prodtabs" aria-label="Product">
+        <a class="prodtab" href="/#create">✦ Birth chart</a>
+        <a class="prodtab active" href="#create" aria-current="page">✧ <span class="long">Family constellations</span><span class="short">Family</span></a>
+      </nav>
       <label>Family name on the poster
         <input type="text" id="fc-family" maxlength="40" placeholder="e.g. The Wilsons"></label>
       <div style="margin-top:22px">
