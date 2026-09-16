@@ -344,15 +344,37 @@ document.addEventListener('DOMContentLoaded', () => {
   if (draft && draft.rows && draft.rows.length >= 2) {
     draft.rows.forEach(r => addRow(r.name || '', r.date || ''));
     if (draft.family != null) document.getElementById('fc-family').value = draft.family;
-    ['#fc-themes .cfg-opt|theme|theme', '#fc-formats .cfg-opt|frameType|frametype',
-     '#fc-sizes .cfg-opt|size|size', '#fc-colors .cfg-opt|frameColor|color'].forEach(spec => {
-      const [sel, key, attr] = spec.split('|');
-      document.querySelectorAll(sel).forEach(b =>
-        b.classList.toggle('active', b.dataset[attr] === String(state[key])));
-    });
+    syncActive();
   } else {
     addRow(); addRow();
   }
   attachControls();
+  attachPresets();
   refresh();
 });
+
+/* активные кнопки групп = состояние (после черновика и после пресета) */
+function syncActive() {
+  ['#fc-themes .cfg-opt|theme|theme', '#fc-formats .cfg-opt|frameType|frametype',
+   '#fc-sizes .cfg-opt|size|size', '#fc-colors .cfg-opt|frameColor|color'].forEach(spec => {
+    const [sel, key, attr] = spec.split('|');
+    document.querySelectorAll(sel).forEach(b =>
+      b.classList.toggle('active', b.dataset[attr] === String(state[key])));
+  });
+}
+
+/* пресеты сетки «Sizes & prices»: клик → формат и размер в конфигураторе (близнец ortus.js);
+   до #create доскроллит якорь. ⛔Состав семьи и фамилию пресет не трогает. */
+function attachPresets() {
+  const ok = {
+    theme: v => THEMES.some(t => t.id === v), frameType: v => v in PRICES,
+    size: v => SIZES.some(s => s[0] === v), frameColor: v => COLORS.includes(v),
+  };
+  document.querySelectorAll('[data-preset-frametype]').forEach(a => a.addEventListener('click', () => {
+    const d = a.dataset;
+    [['theme', d.presetTheme], ['frameType', d.presetFrametype], ['size', d.presetSize],
+     ['frameColor', d.presetColor]].forEach(([k, v]) => { if (v && ok[k](v)) state[k] = v; });
+    syncActive();
+    refresh();
+  }));
+}

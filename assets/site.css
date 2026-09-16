@@ -1,0 +1,87 @@
+/* Ortus Atelier — общее для всех страниц: меню, подвал, сетка цен, FAQ, рамы, сестринская студия.
+   Цвета — переменные страницы (index/family — свои стили, текстовые страницы — legal-style.css). */
+
+/* ── меню ── */
+.topnav { display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 24px 0 0; position: relative; z-index: 3;
+  font: 400 12px/1.2 'IBM Plex Mono', monospace; letter-spacing: .16em; text-transform: uppercase; }
+.topnav a { color: var(--muted); text-decoration: none; transition: color .2s; }
+.topnav a:hover, .topnav a[aria-current] { color: var(--ink); }
+.topnav .brand { color: var(--ink); letter-spacing: .24em; white-space: nowrap; }
+.topnav .links { display: flex; gap: 24px; flex-wrap: wrap; justify-content: flex-end; }
+.topnav + section { padding-top: 64px !important; }
+/* надпись над заголовком: на телефоне линии по бокам короче, иначе даже «Ortus Atelier» ломается в две строки */
+@media (max-width: 560px) { .eyebrow { gap: 12px; text-align: center; } .eyebrow::before, .eyebrow::after { width: 32px; flex: none; } }
+@media (max-width: 760px) { .topnav .links a.opt { display: none; } }
+@media (max-width: 560px) {
+  .topnav { flex-direction: column; gap: 12px; padding-top: 18px; }
+  .topnav .links { justify-content: center; gap: 8px 18px; font-size: 11px; letter-spacing: .12em; }
+  .topnav + section { padding-top: 48px !important; }
+}
+
+/* ── подвал: строки ровняются по ширине, название студии не рвётся ── */
+footer { text-wrap: balance; }
+footer a { color: inherit; white-space: nowrap; }
+footer .footlinks a { color: var(--muted); text-decoration: none; }
+footer .footlinks a:hover { color: var(--ink); }
+
+/* ── «Also from the atelier»: веер-ссылка (как на главной) ── */
+.fan-link .plate { text-decoration: none; }
+.plate .cap { display: block; text-align: center; padding: 12px 0 4px;
+  font: 400 11px/1.2 'IBM Plex Mono', monospace; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--helper); }
+.fan-cta { text-align: center; margin-top: 36px; }
+
+/* ── сетка цен: формат × размер, клик ставит модель в конфигуратор ── */
+.pricegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 44px auto 0; max-width: 980px; }
+.pg-cell { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; padding: 18px 20px;
+  border-radius: 14px; background: var(--frost); box-shadow: inset 0 0 0 1px var(--hairline);
+  text-decoration: none; transition: box-shadow .2s, background-color .2s; }
+.pg-cell:hover { box-shadow: inset 0 0 0 1px var(--copper); background-color: rgba(192,122,74,.06); }
+.pg-fmt { font: 500 19px/1.2 'Cormorant Garamond', Georgia, serif; color: var(--ink); }
+.pg-size { font: 400 12px/1.2 'IBM Plex Mono', monospace; letter-spacing: .12em; color: var(--helper); }
+.pg-price { margin-left: auto; font: 500 22px/1 'Cormorant Garamond', Georgia, serif; color: var(--ink); }
+.pg-note { text-align: center; max-width: 64ch; margin: 22px auto 0; color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) { .pricegrid { grid-template-columns: 1fr; max-width: 460px; } }
+
+/* ── FAQ ── */
+.faq { max-width: 760px; margin: 40px auto 0; }
+.faq details { border-bottom: 1px solid var(--hairline); padding: 18px 2px; }
+.faq summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 16px;
+  font: 500 20px/1.3 'Cormorant Garamond', Georgia, serif; color: var(--ink); }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 400 18px/1.2 'IBM Plex Mono', monospace; color: var(--copper); }
+.faq details[open] summary::after { content: "–"; }
+.faq details p { margin-top: 10px; color: var(--muted); font-size: 15px; max-width: 68ch; }
+
+/* ── рамы Classic: те же файлы рам, что у SKN (срез 80 px), лицо рамы ≈ 6 % ширины листа ── */
+.frames { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; margin: 48px auto 0; max-width: 960px; }
+.frame-pick { display: block; text-decoration: none; container-type: inline-size; }
+.frame-pick figure { transition: transform .25s ease; }
+.frame-pick:hover figure { transform: translateY(-4px); }
+.framed { display: block; border: 16px solid transparent; border-width: max(12px, 6cqw);
+  background: #0b1220; box-shadow: 0 24px 44px rgba(0,0,0,.55); }
+.framed.black  { border-image: url(frames/frame-classic-black.png) 80 stretch; }
+.framed.gold   { border-image: url(frames/frame-classic-gold.png) 80 stretch; }
+.framed.silver { border-image: url(frames/frame-classic-silver.png) 80 stretch; }
+.framed img { display: block; width: 100%; height: auto; }
+.frame-pick figcaption { text-align: center; padding: 16px 0 0; font: 400 11px/1.4 'IBM Plex Mono', monospace;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--helper); transition: color .2s; }
+.frame-pick:hover figcaption { color: var(--ink); }
+@media (max-width: 760px) { .frames { grid-template-columns: 1fr; max-width: 320px; gap: 40px; } }
+/* рама вокруг живого превью (Classic): ширину и файл ставит ortus.js */
+.np-pv.np-framed { box-shadow: 0 24px 48px rgba(0,0,0,.5); }
+.np-pv.np-framed svg { border-radius: 0; box-shadow: none; }
+
+/* ── сестринская студия (зеркало #sister у SKN): лист слева, текст и ссылки справа ── */
+.sister { display: grid; grid-template-columns: 240px 1fr; gap: 40px; align-items: center; max-width: 760px; margin: 40px auto 0; }
+.sister img { display: block; width: 100%; height: auto; border-radius: 4px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.5); transition: transform .3s ease; }
+.sister a:hover img { transform: translateY(-4px); }
+.sister p { color: var(--muted); }
+.sister-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+@media (max-width: 640px) { .sister { grid-template-columns: 1fr; text-align: center; gap: 28px; }
+  .sister img { max-width: 240px; margin: 0 auto; } .sister-links { justify-content: center; } }
+
+/* ── about / contact: вводный абзац (на текстовых страницах .updated — мелкая строка даты) ── */
+.lede { margin: 6px 0 36px; font-size: 16.5px; color: var(--muted); }

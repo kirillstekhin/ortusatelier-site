@@ -536,7 +536,7 @@ function renderSvg(o) {
 
 /* ═══════════════ превью на странице: показ, анимация, кроссфейд ═══════════════ */
 
-const SKY_URL = 'assets/natal-sky.json?v=1';
+const SKY_URL = '/assets/natal-sky.json?v=1';   // от корня: 404.html отдаётся и на вложенных адресах
 const SKY_DUR = 2400;      // как у SKN
 const TAU = 140;           // мс: сглаживание проявления лепестков и ступенек глифов
 const ctl = { el: null, chip: null, shown: null, anim: null, xf: null, next: null, tick: 0, loading: false, waiting: null };

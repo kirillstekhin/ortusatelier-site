@@ -77,6 +77,54 @@ function refresh() {
   document.querySelectorAll('#ns-formats .cfg-opt').forEach(b =>
     b.querySelector('.f-price').textContent = `£${PRICES[b.dataset.frametype][state.size].toFixed(2)}`);
   renderPreview();
+  applyPreviewFrame();
+}
+
+/* ── рама на живом превью при Classic — механика SKN (starmap.js, applyPreviewFrame): те же файлы
+   рам, срез 80 px = ширина планки в файле, лицо рамы ≈ 6 % ширины листа ──
+   ⚠️Ширина берётся по offsetWidth (вместе с рамкой): рамка её не меняет, поэтому пересчёт по
+   ResizeObserver не раскачивается. clientWidth сжимался бы от самой рамки. */
+const FRAME_FILES = { black: 'frame-classic-black.png', gold: 'frame-classic-gold.png', silver: 'frame-classic-silver.png' };
+let frameKey = '';
+function applyPreviewFrame() {
+  const pv = document.getElementById('np-preview');
+  if (!pv) return;
+  const file = state.frameType === 'classic' ? FRAME_FILES[state.frameColor] : null;
+  const bw = file ? Math.max(12, Math.round((pv.offsetWidth || 560) * 0.06)) : 0;
+  const key = file ? file + bw : '';
+  if (key === frameKey) return;                   // то же самое — стиль не трогаем
+  frameKey = key;
+  pv.classList.toggle('np-framed', !!file);
+  pv.style.border = file ? `${bw}px solid transparent` : '';
+  pv.style.borderImage = file ? `url(/assets/frames/${file}) 80 stretch` : '';
+  pv.style.background = file ? '#0b1220' : '';
+}
+
+/* активные кнопки групп = состояние (после черновика и после пресета) */
+function syncActive() {
+  ['#ns-themes .cfg-opt|theme|theme', '#ns-formats .cfg-opt|frameType|frametype',
+   '#ns-sizes .cfg-opt|size|size', '#ns-colors .cfg-opt|frameColor|color'].forEach(spec => {
+    const [sel, key, attr] = spec.split('|');
+    document.querySelectorAll(sel).forEach(b =>
+      b.classList.toggle('active', b.dataset[attr] === String(state[key])));
+  });
+}
+
+/* пресеты разделов «Framed by hand» и «Sizes & prices»: клик → конфигуратор С ЭТОЙ моделью
+   (механика sm-frame-pick у SKN); до #create доскроллит сам якорь ссылки.
+   ⛔Пресет не трогает дату, время, место и имя — только тему, формат, размер и цвет рамы. */
+function attachPresets() {
+  const ok = {
+    theme: v => THEMES.some(t => t.id === v), frameType: v => v in PRICES,
+    size: v => SIZES.some(s => s[0] === v), frameColor: v => COLORS.includes(v),
+  };
+  document.querySelectorAll('[data-preset-frametype]').forEach(a => a.addEventListener('click', () => {
+    const d = a.dataset;
+    [['theme', d.presetTheme], ['frameType', d.presetFrametype], ['size', d.presetSize],
+     ['frameColor', d.presetColor]].forEach(([k, v]) => { if (v && ok[k](v)) state[k] = v; });
+    syncActive();
+    refresh();
+  }));
 }
 
 /* ── живое превью листа (assets/natal-preview.js — порт печатного рендера) ──
@@ -459,12 +507,19 @@ document.addEventListener('DOMContentLoaded', () => {
     set('ns-date', state.dateStr); set('ns-time', state.timeStr);
     set('ns-place', state.place); set('ns-name', state.name);
     placeBound = !!(state.lat != null && state.lon != null && state.place);
-    ['#ns-themes .cfg-opt|theme|theme', '#ns-formats .cfg-opt|frameType|frametype',
-     '#ns-sizes .cfg-opt|size|size', '#ns-colors .cfg-opt|frameColor|color'].forEach(spec => {
-      const [sel, key, attr] = spec.split('|');
-      document.querySelectorAll(sel).forEach(b =>
-        b.classList.toggle('active', b.dataset[attr] === String(state[key])));
-    });
+    syncActive();
+  }
+  attachPresets();
+  /* ширина превью меняется при повороте, ресайзе и липком сжатии на телефоне — планку рамы
+     пересчитываем. Правка стиля — в следующем кадре, не внутри колбэка наблюдателя. */
+  const pv = document.getElementById('np-preview');
+  if (pv && window.ResizeObserver) {
+    let queued = false;
+    new ResizeObserver(() => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; applyPreviewFrame(); });
+    }).observe(pv);
   }
   refresh();
   if (placeBound) showEcho();
