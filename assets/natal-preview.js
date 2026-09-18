@@ -817,18 +817,32 @@ function watchSticky() {
   evaluate();
 }
 
-/* страница пары: статичный показ (анимация листа — только у одной карты). Небо грузится тем же путём. */
-function showCouple(o) {
+/* страница пары: статичный показ (анимация листа — только у одной карты). Небо грузится тем же путём;
+   вызовы с формы склеиваются в один кадр, как у show(). Чип — по человеку: Солнце и асцендент. */
+function applyCouple(o) {
   const el = root.document.getElementById('np-preview');
   if (!el) return;
   if (!(isFinite(o.a.lat) && isFinite(o.a.lon) && isFinite(o.b.lat) && isFinite(o.b.lon))) return;
   if (!SKY) { ctl.waitingCouple = o; if (!ctl.loading) {
     ctl.loading = true;
-    root.fetch(SKY_URL).then(r => r.json()).then(d => { SKY = d; ctl.loading = false; const w = ctl.waitingCouple; ctl.waitingCouple = null; if (w) showCouple(w); })
+    root.fetch(SKY_URL).then(r => r.json()).then(d => { SKY = d; ctl.loading = false; const w = ctl.waitingCouple; ctl.waitingCouple = null; if (w) applyCouple(w); })
       .catch(() => { ctl.loading = false; });
   } return; }
-  el.innerHTML = renderCoupleSvg(o).svg;
+  const r = renderCoupleSvg(o);
+  el.innerHTML = r.svg;
+  const chip = root.document.getElementById('np-chip');
+  if (chip) chip.textContent = [['a', r.frames[0]], ['b', r.frames[1]]].map(([w, F]) => {
+    const p = o[w];
+    const who = (p.name || '').trim() || (w === 'a' ? 'First' : 'Second');
+    return `${who}: Sun in ${signOf(F.bodies.Sun)}` + (p.placeBound === false ? '' : ` · ${signOf(F.asc)} rising`);
+  }).join('   ✦   ');
   if (!ctl.sticky) watchSticky();
+  return r;
+}
+function showCouple(o) {
+  ctl.nextCouple = o;
+  if (ctl.tickCouple) return;
+  ctl.tickCouple = root.requestAnimationFrame(() => { ctl.tickCouple = 0; applyCouple(ctl.nextCouple); });
 }
 
 /* вызовы с формы склеиваются в один кадр: ввод имени не рендерит лист на каждую букву дважды */

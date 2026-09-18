@@ -30,7 +30,7 @@
 </head>
 <body>
 <div class="wrap">
-  <nav class="topnav" aria-label="Main"><a class="brand" href="/">Ortus Atelier</a><span class="links"><a href="/#create">Birth chart</a><a href="/family">Family</a><a class="opt" href="/#how">How it works</a><a href="/#faq">FAQ</a><a href="/contact">Contact</a></span></nav>
+  <nav class="topnav" aria-label="Main"><a class="brand" href="/">Ortus Atelier</a><span class="links"><a href="/#create">Birth chart</a><a href="/couple">Couple</a><a href="/family">Family</a><a class="opt" href="/#how">How it works</a><a href="/#faq">FAQ</a><a href="/contact">Contact</a></span></nav>
   <div class="hero">
     <div class="kicker">Order received</div>
     <h1>Your sky is on its way to paper.</h1>
@@ -71,11 +71,13 @@
 try {
   sessionStorage.removeItem('ortus_natal_draft');
   sessionStorage.removeItem('ortus_family_draft');
+  sessionStorage.removeItem('ortus_couple_draft');
   /* ⛔ПОПЫТКУ СНИМАЕМ ВМЕСТЕ С ЧЕРНОВИКОМ. Она переживает перезагрузку намеренно — чтобы
      повтор не создал вторую оплату, — но после заказа обязана исчезнуть: иначе следующий
      заказ в той же вкладке пошёл бы по старой попытке и получил бы отказ вместо оплаты. */
   sessionStorage.removeItem('ortus_natal_draft_attempt');
   sessionStorage.removeItem('ortus_family_draft_attempt');
+  sessionStorage.removeItem('ortus_couple_draft_attempt');
 } catch (e) {}
 </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "2adb8d32ea504d02881a9715c38a0d0b"}'></script>
