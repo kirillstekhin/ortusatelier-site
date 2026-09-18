@@ -268,10 +268,10 @@ function emWidth(text, table, ls) {
   }
   return total / 1000.0 + ls * Math.max(n - 1, 0);
 }
-function fitSize(text, table, size, ls, minimum) {
+function fitSize(text, table, size, ls, minimum, maxW = TEXT_MAX) {
   const emw = emWidth(text, table, ls);
   if (emw <= 0) return size;
-  return Math.max(minimum, Math.min(size, Math.floor(TEXT_MAX / emw)));
+  return Math.max(minimum, Math.min(size, Math.floor(maxW / emw)));
 }
 
 /* ⛔ВЫСОТА ЛИСТА — ИЗ ПИКСЕЛЕЙ АРТИКУЛА, КАК В ПЕЧАТИ: fulfil.py зовёт рендер с
@@ -484,21 +484,8 @@ function honestFrame(o) {
            bodies: c.bodies, asc: c.asc, text: textBlock(o, c.asc) };
 }
 
-/* A (кадр анимации): {lst, lat, bodies, asc, asp:[[n1,n2,ang,alpha]…], ring, lod} или null */
-function renderFrame(F, A, fadeFaint) {
-  const t = PODACHI[F.key];
-  const gid = F.key.replace(/-/g, '');
-  const H = F.H;
-  const lst = A ? A.lst : F.lst, lat = A ? A.lat : F.lat;
-  const bodies = A ? A.bodies : F.bodies, asc = A ? A.asc : F.asc;
-  let asp = A ? A.asp.filter(x => x[3] > 0.001) : aspects(bodies).map(x => [x[0], x[1], x[2], 1]);
-  /* нормировка плотности печати (26.08): заливку давим ~1/n, обводку мягче.
-     В анимации n — сумма «проявленности», чтобы яркость не прыгала на входе нового лепестка. */
-  const n = Math.max(A ? asp.reduce((acc, x) => acc + x[3], 0) : asp.length, 1);
-  const fillMul = Math.min(1.0, Math.pow(9.0 / n, 1.15));
-  const opMul = Math.min(1.0, Math.pow(10.0 / n, 0.35));
-  asp = sortBySep(asp, bodies);
-
+/* defs листа: градиенты неба и лепестков, маска диска, свечение — одни на лист и на оба диска пары */
+function defsFor(t, gid) {
   const defs = [`<radialGradient id="sky${gid}" cx="50%" cy="42%" r="62%">`
               + `<stop offset="0%" stop-color="${t.halo}"/><stop offset="100%" stop-color="${t.bg}"/></radialGradient>`,
                 `<clipPath id="disc${gid}"><circle cx="${CX}" cy="${CY}" r="${RSKY}"/></clipPath>`];
@@ -506,13 +493,26 @@ function renderFrame(F, A, fadeFaint) {
   if (t.glow) defs.push(`<filter id="gl${gid}" x="-30%" y="-30%" width="160%" height="160%">`
                       + `<feGaussianBlur stdDeviation="7.5" result="b"/>`
                       + `<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`);
-  const tx = F.text;
-  /* ⛔Заголовок заезжал на диск у 40×50 (18.09.2026): текст привязан к низу (H−210), диск — к
-     верху; у 4:5 (H=1312) заглавные ложились на кольцо. Диск масштабируется, сохраняя канон 3:4:
-     верхнее поле DISC_TOP и зазор TITLE_GAP до заголовка; у 3:4 и 5:7 s=1 — без обёртки.
-     ⚠️Формула и формат чисел — как в natal_poster.py (render); сверка — check_preview_parity.py. */
-  const sDisc = Math.min(1.0, (H - DISC_TOP - TITLE_GAP - 210.0) / (2 * RSKY));
-  let disc = [
+  return defs;
+}
+
+/* аспекты кадра в порядке отрисовки и нормировка плотности (natal_poster._chart_parts) */
+function frameAspects(F, A) {
+  const bodies = A ? A.bodies : F.bodies;
+  let asp = A ? A.asp.filter(x => x[3] > 0.001) : aspects(bodies).map(x => [x[0], x[1], x[2], 1]);
+  /* нормировка плотности печати (26.08): заливку давим ~1/n, обводку мягче.
+     В анимации n — сумма «проявленности», чтобы яркость не прыгала на входе нового лепестка. */
+  const n = Math.max(A ? asp.reduce((acc, x) => acc + x[3], 0) : asp.length, 1);
+  return { asp: sortBySep(asp, bodies), fillMul: Math.min(1.0, Math.pow(9.0 / n, 1.15)),
+           opMul: Math.min(1.0, Math.pow(10.0 / n, 0.35)) };
+}
+
+/* диск в координатах канона (CX, CY, RSKY): небо, кольцо, лепестки, листья и глифы — natal_poster._disc */
+function discElements(t, gid, F, A, fadeFaint) {
+  const lst = A ? A.lst : F.lst, lat = A ? A.lat : F.lat;
+  const bodies = A ? A.bodies : F.bodies, asc = A ? A.asc : F.asc;
+  const { asp, fillMul, opMul } = frameAspects(F, A);
+  return [
     `<circle cx="${CX}" cy="${CY}" r="${RSKY}" fill="url(#sky${gid})"/>`,
     `<g clip-path="url(#disc${gid})">${realSky(t, lst, lat, !!(A && A.lod), fadeFaint)}</g>`,
     `<circle cx="${CX}" cy="${CY}" r="${RSKY}" fill="none" stroke="${t.accent}" stroke-width="2" opacity=".6"/>`,
@@ -522,6 +522,21 @@ function renderFrame(F, A, fadeFaint) {
     '</g>',
     leavesAndPlanets(t, gid, asc, bodies, A ? A.ring : clusterRings(bodies)),
   ];
+}
+
+/* A (кадр анимации): {lst, lat, bodies, asc, asp:[[n1,n2,ang,alpha]…], ring, lod} или null */
+function renderFrame(F, A, fadeFaint) {
+  const t = PODACHI[F.key];
+  const gid = F.key.replace(/-/g, '');
+  const H = F.H;
+  const defs = defsFor(t, gid);
+  const tx = F.text;
+  /* ⛔Заголовок заезжал на диск у 40×50 (18.09.2026): текст привязан к низу (H−210), диск — к
+     верху; у 4:5 (H=1312) заглавные ложились на кольцо. Диск масштабируется, сохраняя канон 3:4:
+     верхнее поле DISC_TOP и зазор TITLE_GAP до заголовка; у 3:4 и 5:7 s=1 — без обёртки.
+     ⚠️Формула и формат чисел — как в natal_poster.py (render); сверка — check_preview_parity.py. */
+  const sDisc = Math.min(1.0, (H - DISC_TOP - TITLE_GAP - 210.0) / (2 * RSKY));
+  let disc = discElements(t, gid, F, A, fadeFaint);
   if (sDisc < 1.0) {
     const dy = DISC_TOP + RSKY * sDisc - CY;
     disc = [`<g transform="translate(0,${dy.toFixed(2)}) translate(${CX},${CY}) scale(${sDisc.toFixed(5)}) `
@@ -546,6 +561,82 @@ function renderFrame(F, A, fadeFaint) {
 function renderSvg(o) {
   const F = honestFrame(o);
   return { svg: renderFrame(F, null, false), frame: F };
+}
+
+/* ═══ Диптих пары (18.09.2026) — порт natal_poster.render_couple 1:1 ═══
+   Два неба на горизонтальном листе 1400 × H; диски канона переносятся transform'ом (R=300 из 475),
+   под каждым свой текстовый блок (кегли 0.72 от листа, ширина колонки 620), между ними «&».
+   o = { theme, frameType, size, a: {dateStr, timeStr, lat, lon, tz, place, placeBound, name}, b: {…} } */
+const CPL_W = 1400, CPL_R = 300.0, CPL_TOP = 100.0, CPL_DX = 340.0, CPL_TEXT_MAX = 620.0;
+const CPL_TITLE = 48, CPL_TITLE_MIN = 17, CPL_SUB = 17, CPL_SUB_MIN = 9, CPL_FOOT = 14;
+
+function canvasHCouple(frameType, size) {       // высота горизонтального листа из пикселей артикула
+  const px = PRINT_PX[String(frameType || 'print').toUpperCase() + size] || PRINT_PX.PRINT3040;
+  return pyRound(1400 * px[0] / px[1]);
+}
+
+function coupleCaptions(p, asc) {                // natal_poster._captions + _foot, кегли пары
+  const [y, mo, d] = p.dateStr.split('-').map(x => parseInt(x, 10));
+  const bound = p.placeBound !== false;
+  const place = bound ? (p.place || '') : 'Your birthplace';
+  const dateS = `${d} ${MONTHS[mo]} ${y} · ${p.timeStr}`;
+  const name = (p.name || '').trim();
+  let title, sub;
+  if (name) { title = name; sub = `${place.toUpperCase()} · ${dateS}`; }
+  else {
+    const i = place.indexOf(',');
+    const city = (i < 0 ? place : place.slice(0, i)).trim();
+    const rest = (i < 0 ? '' : place.slice(i + 1)).trim();
+    title = city || place;
+    sub = rest ? `${rest.toUpperCase()} · ${dateS}` : dateS;
+  }
+  title = title.toUpperCase();
+  const foot = bound
+    ? `${Math.abs(p.lat).toFixed(4)}°${p.lat >= 0 ? 'N' : 'S'} ${Math.abs(p.lon).toFixed(4)}°${p.lon >= 0 ? 'E' : 'W'} · RISING ${signOf(asc).toUpperCase()}`
+    : 'RISING SIGN FOLLOWS YOUR BIRTHPLACE';
+  return { title, sub, foot,
+           titleSize: fitSize(title, CORMORANT_500_ADV, CPL_TITLE, TITLE_LS, CPL_TITLE_MIN, CPL_TEXT_MAX),
+           subSize: fitSize(sub, null, CPL_SUB, SUB_LS, CPL_SUB_MIN, CPL_TEXT_MAX) };
+}
+
+function renderCoupleSvg(o) {
+  const key = THEME_TOKENS[o.theme] || 'copper-bloom';
+  const t = PODACHI[key];
+  const gid = key.replace(/-/g, '');
+  const H = canvasHCouple(o.frameType, o.size);
+  const cy = CPL_TOP + CPL_R;
+  const sDisc = CPL_R / RSKY;
+  const parts = [];
+  const frames = [];
+  [[o.a, CPL_W / 2 - CPL_DX], [o.b, CPL_W / 2 + CPL_DX]].forEach(([p, cx]) => {
+    const F = honestFrame({ ...p, theme: o.theme, frameType: o.frameType, size: o.size });
+    frames.push(F);
+    const tx = cx - CX * sDisc, ty = cy - CY * sDisc;
+    parts.push(`<g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${sDisc.toFixed(5)})">`
+               + discElements(t, gid, F, null, false).join('') + '</g>');
+    const c = coupleCaptions(p, F.asc);
+    parts.push(
+      `<text x="${cx.toFixed(0)}" y="${H - 151}" text-anchor="middle" fill="${t.ink}" font-family="${TITLE_FONT}" `
+        + `font-weight="500" font-size="${c.titleSize}" letter-spacing=".05em">${esc(c.title)}</text>`,
+      `<text x="${cx.toFixed(0)}" y="${H - 112}" text-anchor="middle" fill="${t.dim}" font-family="${META_FONT}" `
+        + `font-size="${c.subSize}" letter-spacing=".2em">${esc(c.sub)}</text>`,
+      `<line x1="${(cx - 76).toFixed(0)}" y1="${H - 83}" x2="${(cx + 76).toFixed(0)}" y2="${H - 83}" `
+        + `stroke="${t.accent}" stroke-width="2" opacity=".9"/>`,
+      `<text x="${cx.toFixed(0)}" y="${H - 50}" text-anchor="middle" fill="${t.dim}" font-family="${META_FONT}" `
+        + `font-size="${CPL_FOOT}" letter-spacing=".22em">${esc(c.foot)}</text>`);
+  });
+  const mid = CPL_W / 2;
+  parts.push(
+    `<line x1="${mid.toFixed(0)}" y1="${(CPL_TOP + 50).toFixed(0)}" x2="${mid.toFixed(0)}" y2="${(cy - 35).toFixed(0)}" stroke="${t.accent}" stroke-width="1" opacity=".35"/>`,
+    `<line x1="${mid.toFixed(0)}" y1="${(cy + 35).toFixed(0)}" x2="${mid.toFixed(0)}" y2="${(cy + CPL_R).toFixed(0)}" stroke="${t.accent}" stroke-width="1" opacity=".35"/>`,
+    `<text x="${mid.toFixed(0)}" y="${(cy + 15).toFixed(0)}" text-anchor="middle" fill="${t.accent}" font-family="${TITLE_FONT}" `
+      + `font-style="italic" font-size="54" opacity=".9">&amp;</text>`);
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${CPL_W}" height="${H}" viewBox="0 0 ${CPL_W} ${H}">`,
+    `<defs>${defsFor(t, gid).join('')}</defs>`,
+    `<rect width="${CPL_W}" height="${H}" fill="${t.bg}"/>`,
+    ...parts, '</svg>'].join('');
+  return { svg, frames, H };
 }
 
 /* ═══════════════ превью на странице: показ, анимация, кроссфейд ═══════════════ */
@@ -726,6 +817,20 @@ function watchSticky() {
   evaluate();
 }
 
+/* страница пары: статичный показ (анимация листа — только у одной карты). Небо грузится тем же путём. */
+function showCouple(o) {
+  const el = root.document.getElementById('np-preview');
+  if (!el) return;
+  if (!(isFinite(o.a.lat) && isFinite(o.a.lon) && isFinite(o.b.lat) && isFinite(o.b.lon))) return;
+  if (!SKY) { ctl.waitingCouple = o; if (!ctl.loading) {
+    ctl.loading = true;
+    root.fetch(SKY_URL).then(r => r.json()).then(d => { SKY = d; ctl.loading = false; const w = ctl.waitingCouple; ctl.waitingCouple = null; if (w) showCouple(w); })
+      .catch(() => { ctl.loading = false; });
+  } return; }
+  el.innerHTML = renderCoupleSvg(o).svg;
+  if (!ctl.sticky) watchSticky();
+}
+
 /* вызовы с формы склеиваются в один кадр: ввод имени не рендерит лист на каждую букву дважды */
 function show(o) {
   ctl.next = o;
@@ -737,7 +842,7 @@ function show(o) {
   });
 }
 
-const api = { setSky, chart, aspects, drawOrder, canvasH, renderSvg, signOf, show,
+const api = { setSky, chart, aspects, drawOrder, canvasH, renderSvg, signOf, show, renderCoupleSvg, canvasHCouple, showCouple,
   fitTitle: s => fitSize(s, CORMORANT_500_ADV, TITLE_SIZE, TITLE_LS, TITLE_MIN),
   fitSub: s => fitSize(s, null, SUB_SIZE, SUB_LS, SUB_MIN),
   advTable: CORMORANT_500_ADV, advFallback: ADV_FALLBACK };
