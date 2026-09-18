@@ -175,6 +175,7 @@ function chart(dateStr, timeStr, lat, lon, tz) {
 /* ═══════════════ natal_poster.py — лист (порт 1:1) ═══════════════ */
 
 const W = 1050, CX = 525.0, CY = 590.0, RSKY = 475.0, PETAL_R = 295.0;
+const DISC_TOP = 115.0, TITLE_GAP = 125.0;   // канон 3:4: 115 + диск 950 + 125 + текстовый блок 210 = 1400
 const ORBS = [[0, 7], [60, 5], [90, 6], [120, 6], [180, 7]];                    // аспект°, орб°
 const ORDER = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'];
 const GLYPH_PATHS = {
@@ -506,10 +507,12 @@ function renderFrame(F, A, fadeFaint) {
                       + `<feGaussianBlur stdDeviation="7.5" result="b"/>`
                       + `<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`);
   const tx = F.text;
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
-    `<defs>${defs.join('')}</defs>`,
-    `<rect width="${W}" height="${H}" fill="${t.bg}"/>`,
+  /* ⛔Заголовок заезжал на диск у 40×50 (18.09.2026): текст привязан к низу (H−210), диск — к
+     верху; у 4:5 (H=1312) заглавные ложились на кольцо. Диск масштабируется, сохраняя канон 3:4:
+     верхнее поле DISC_TOP и зазор TITLE_GAP до заголовка; у 3:4 и 5:7 s=1 — без обёртки.
+     ⚠️Формула и формат чисел — как в natal_poster.py (render); сверка — check_preview_parity.py. */
+  const sDisc = Math.min(1.0, (H - DISC_TOP - TITLE_GAP - 210.0) / (2 * RSKY));
+  let disc = [
     `<circle cx="${CX}" cy="${CY}" r="${RSKY}" fill="url(#sky${gid})"/>`,
     `<g clip-path="url(#disc${gid})">${realSky(t, lst, lat, !!(A && A.lod), fadeFaint)}</g>`,
     `<circle cx="${CX}" cy="${CY}" r="${RSKY}" fill="none" stroke="${t.accent}" stroke-width="2" opacity=".6"/>`,
@@ -518,6 +521,17 @@ function renderFrame(F, A, fadeFaint) {
     petals(t, gid, asc, bodies, asp, PETAL_R, 0.34, 1.0 * fillMul, 1.0, 'outer', opMul),
     '</g>',
     leavesAndPlanets(t, gid, asc, bodies, A ? A.ring : clusterRings(bodies)),
+  ];
+  if (sDisc < 1.0) {
+    const dy = DISC_TOP + RSKY * sDisc - CY;
+    disc = [`<g transform="translate(0,${dy.toFixed(2)}) translate(${CX},${CY}) scale(${sDisc.toFixed(5)}) `
+            + `translate(${-CX},${-CY})">`, ...disc, '</g>'];
+  }
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
+    `<defs>${defs.join('')}</defs>`,
+    `<rect width="${W}" height="${H}" fill="${t.bg}"/>`,
+    ...disc,
     `<text x="${W / 2}" y="${H - 210}" text-anchor="middle" fill="${t.ink}" font-family="${TITLE_FONT}" `
       + `font-weight="500" font-size="${tx.titleSize}" letter-spacing=".05em">${esc(tx.title)}</text>`,
     `<text x="${W / 2}" y="${H - 155}" text-anchor="middle" fill="${t.dim}" font-family="${META_FONT}" `
