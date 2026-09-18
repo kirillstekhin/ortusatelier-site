@@ -63,7 +63,15 @@ const RATE_WINDOW_S = 60;
 const RATE_MAX = 10;
 
 export const CODE_RE =
-  /^(SM2|MN2|NT2|FC2)-(\d{8})-(\d{4})-([NS])(\d+)-([EW])(\d+)-Z(-?\d+)-([A-Z]+)-([A-Z0-9]+)-([A-Z]+)$/;
+  /^(SM2|MN2|NT2|FC2|CP2)-(\d{8})-(\d{4})-([NS])(\d+)-([EW])(\d+)-Z(-?\d+)-([A-Z]+)-([A-Z0-9]+)-([A-Z]+)$/;
+/* Продукты Ortus и префиксы кодов. couple (18.09.2026) — пара, диптих: в коде только тема/формат/
+   рама (даты и координаты — заглушки, как у FC2), оба человека — в `members`: ровно двое, у каждого
+   имя, дата, время ЧЧ:ММ, пояс в минутах и место с координатами. Зеркало tools/design_store.py. */
+export const PRODUCTS = ["natal", "family", "couple"];
+export const PREFIX = { natal: "NT2", family: "FC2", couple: "CP2" };
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const COUPLE_TZ_RANGE = [-840, 840];
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 
 /* ⛔ДОВЕРЕННАЯ СЕТКА — ПО РЕЖИМАМ. Объекты Stripe в test и live РАЗНЫЕ: price из боевого
    режима в тестовом не существует, и наоборот. Одна общая таблица означала бы, что
@@ -89,6 +97,14 @@ export const ORTUS = {
     "family/CLASSIC3040": { pence: 6999, price: "price_1UCHa6K6RIyYA8uFs8rawXDZ", link: "https://buy.stripe.com/eVq6oI6IS72d9iXdW07g40r" },
     "family/CLASSIC4050": { pence: 7999, price: "price_1UCHa8K6RIyYA8uFikCWUZrN", link: "https://buy.stripe.com/14A4gA0ku72dfHl5pu7g40s" },
     "family/CLASSIC5070": { pence: 8999, price: "price_1UCHa9K6RIyYA8uFtgwaWX6T", link: "https://buy.stripe.com/aFa14ogjs72dgLp19e7g40t" },
+    // ⚠️ПАРА (18.09.2026): Price НЕ созданы — цена ждёт решения. "TBD" = товар не продаётся:
+    //   запись валидируется, но ответ — not_on_sale, сессия не создаётся.
+    "couple/PRINT3040": { pence: 3499, price: "TBD" },
+    "couple/PRINT4050": { pence: 3999, price: "TBD" },
+    "couple/PRINT5070": { pence: 4499, price: "TBD" },
+    "couple/CLASSIC3040": { pence: 6999, price: "TBD" },
+    "couple/CLASSIC4050": { pence: 7999, price: "TBD" },
+    "couple/CLASSIC5070": { pence: 8999, price: "TBD" },
   },
   /* ⚠️Заполняется `tools/stripe_test_catalog.py` — он же переиспользует уже созданные
      объекты, чтобы повторные прогоны не плодили товары в тестовом режиме. */
@@ -105,6 +121,12 @@ export const ORTUS = {
     "family/CLASSIC3040": { pence: 6999, price: "price_1UFIO4K6RIyYA8uFWyE0rTg2" },
     "family/CLASSIC4050": { pence: 7999, price: "price_1UFIO6K6RIyYA8uFlEyzC4j2" },
     "family/CLASSIC5070": { pence: 8999, price: "price_1UFIO7K6RIyYA8uFeC4VgQ9I" },
+    "couple/PRINT3040": { pence: 3499, price: "TBD" },
+    "couple/PRINT4050": { pence: 3999, price: "TBD" },
+    "couple/PRINT5070": { pence: 4499, price: "TBD" },
+    "couple/CLASSIC3040": { pence: 6999, price: "TBD" },
+    "couple/CLASSIC4050": { pence: 7999, price: "TBD" },
+    "couple/CLASSIC5070": { pence: 8999, price: "TBD" },
   },
 };
 
@@ -115,7 +137,10 @@ const MODE_KEY_RE = { test: /^(sk|rk)_test_/, live: /^(sk|rk)_live_/ };
 
 /* ⛔Куда возвращать при отмене оплаты — по продукту. Общий `/` терял контекст
    семейного заказа: покупатель Family оказывался на натальной странице. */
-const CANCEL_PATH = { natal: "/", family: "/family.html" };
+const CANCEL_PATH = { natal: "/", family: "/family.html", couple: "/couple.html" };
+
+/** У строки сетки есть настоящий Price. «TBD» — товар объявлен, но не продаётся. */
+export const onSale = (row) => !!(row && row.price && row.price !== "TBD");
 
 /** Режим + его таблица, либо код отказа. ⛔Ничего не угадываем и ничего не чиним сами:
     любое расхождение конфигурации — отказ, а не «возьмём что есть». */
@@ -128,8 +153,11 @@ export function modeOf(env) {
   // Таблица режима обязана совпасть с боевой по составу И суммам: разойдутся — прогон
   // проверит не то, что поедет в бой.
   for (const k of GRID_KEYS) {
-    if (!grid[k] || !grid[k].price || grid[k].price === "TBD") return { error: "mode_table_incomplete" };
+    if (!grid[k]) return { error: "mode_table_incomplete" };
     if (grid[k].pence !== ORTUS.live[k].pence) return { error: "mode_table_diverged" };
+    // ⚠️Строка без Price допустима, только если товар не продаётся и в бою (пара до решения о
+    //   цене): иначе прогон проверил бы не то, что поедет в бой.
+    if (onSale(ORTUS.live[k]) && !onSale(grid[k])) return { error: "mode_table_incomplete" };
   }
   return { mode: m, grid };
 }
@@ -148,13 +176,13 @@ export function validDate(s) {
 export function validate(rec) {
   const bad = [];
   const product = rec && rec.product;
-  if (product !== "natal" && product !== "family") bad.push(`product=${JSON.stringify(product)}: жду natal или family`);
+  if (!PRODUCTS.includes(product)) bad.push(`product=${JSON.stringify(product)}: жду natal, family или couple`);
 
   const code = ((rec && rec.design_code) || "").trim();
   const m = CODE_RE.exec(code);
   if (!m) bad.push("design_code не соответствует формату");
   else {
-    const want = { natal: "NT2", family: "FC2" }[product];
+    const want = PREFIX[product];
     if (want && !code.startsWith(want)) bad.push(`design_code начинается не с ${want} — код и продукт разошлись`);
   }
 
@@ -203,6 +231,35 @@ export function validate(rec) {
       if (!validDate(dt)) bad.push(`участник ${i + 1}: дата ${JSON.stringify(dt)} не ГГГГ-ММ-ДД или невозможна`);
     });
   }
+
+  if (product === "couple") {
+    const mem = rec && rec.members;
+    if (!Array.isArray(mem) || mem.length !== 2)
+      bad.push(`пара: людей ${Array.isArray(mem) ? mem.length : "нет"}, жду ровно двоих`);
+    else mem.forEach((x, i) => bad.push(...coupleMemberProblems(i + 1, x)));
+  }
+  return bad;
+}
+
+/** Человек из пары: имя, дата, время, пояс, настоящее место с координатами.
+    Зеркало design_store._couple_member_problems — пределы и правила обязаны совпадать. */
+function coupleMemberProblems(i, x) {
+  if (!x || typeof x !== "object" || Array.isArray(x)) return [`человек ${i}: не объект`];
+  const bad = [];
+  const nm = typeof x.name === "string" ? x.name.trim() : "";
+  if (!nm) bad.push(`человек ${i}: пустое имя`);
+  else if ([...nm].length > LIMITS.member_name) bad.push(`человек ${i}: имя длиннее ${LIMITS.member_name}`);
+  if (!validDate(x.date)) bad.push(`человек ${i}: дата ${JSON.stringify(x.date)} не ГГГГ-ММ-ДД или невозможна`);
+  if (!(typeof x.time === "string" && TIME_RE.test(x.time))) bad.push(`человек ${i}: время ${JSON.stringify(x.time)} не ЧЧ:ММ`);
+  const tz = x.tz_min;
+  if (!(Number.isInteger(tz) && tz >= COUPLE_TZ_RANGE[0] && tz <= COUPLE_TZ_RANGE[1]))
+    bad.push(`человек ${i}: пояс ${JSON.stringify(tz)} не целое число минут в [${COUPLE_TZ_RANGE}]`);
+  const pl = x.place && typeof x.place === "object" && !Array.isArray(x.place) ? x.place : {};
+  const place = typeof pl.name === "string" ? pl.name.trim() : "";
+  if (!place || DASHES.includes(place)) bad.push(`человек ${i}: нужно настоящее название места, а не прочерк`);
+  else if ([...place].length > LIMITS.place) bad.push(`человек ${i}: место длиннее ${LIMITS.place} символов`);
+  if (!(isNum(pl.lat) && isNum(pl.lon) && pl.lat >= -90 && pl.lat <= 90 && pl.lon >= -180 && pl.lon <= 180))
+    bad.push(`человек ${i}: у места нет координат`);
   return bad;
 }
 
@@ -305,7 +362,11 @@ function contentOf(body) {
     format: body.format,
     dedication: ((body.dedication || "").trim()) || null,
     place: body.place ? { name: (body.place.name || "").trim(), lat: body.place.lat, lon: body.place.lon } : null,
-    members: Array.isArray(body.members) ? body.members.map((x) => ({ name: (x.name || "").trim(), date: x.date })) : null,
+    // couple: у человека ещё время, пояс и место (family — только имя и дата); всё это входит в отпечаток
+    members: Array.isArray(body.members) ? body.members.map((x) => body.product === "couple"
+      ? { name: (x.name || "").trim(), date: x.date, time: x.time, tz_min: x.tz_min,
+          place: { name: ((x.place || {}).name || "").trim(), lat: (x.place || {}).lat, lon: (x.place || {}).lon } }
+      : { name: (x.name || "").trim(), date: x.date }) : null,
   };
 }
 
@@ -316,7 +377,12 @@ async function fingerprint(c) {
   const canon = JSON.stringify([
     c.product, c.design_code, c.format, c.dedication,
     c.place ? [c.place.name, c.place.lat, c.place.lon] : null,
-    (c.members || []).map((m) => [m.name, m.date]),
+    // ⚠️У пары в отпечаток входят время, пояс и место каждого: иначе повтор той же попытки с
+    //   другой минутой рождения прошёл бы как «то же содержимое» и открыл оплату СТАРОГО дизайна.
+    //   Кортеж natal/family не менялся — отпечатки уже созданных попыток целы.
+    (c.members || []).map((m) => c.product === "couple"
+      ? [m.name, m.date, m.time, m.tz_min, m.place.name, m.place.lat, m.place.lon]
+      : [m.name, m.date]),
   ]);
   const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canon));
   return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -363,6 +429,8 @@ export async function onRequestPost({ request, env }) {
   if (problems.length) return json({ error: "invalid", problems }, 400);   // ⚠️без перс.данных
 
   const item = cfg.grid[`${body.product}/${body.format}`];
+  // ⛔Товар объявлен, но Price не создан (пара до решения о цене): запись годная, продажи нет.
+  if (!onSale(item)) return json({ error: "not_on_sale" }, 503);
   const content = contentOf(body);
   const fp = await fingerprint(content);
   const aKey = `attempts/${attempt}.json`;
