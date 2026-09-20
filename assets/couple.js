@@ -24,6 +24,10 @@ const THEMES = [
 const SIZES  = [['3040', '40×30 cm'], ['4050', '50×40 cm'], ['5070', '70×50 cm']];
 const COLORS = ['black', 'gold', 'silver'];
 const WHO = ['a', 'b'];
+/* Продаваемые форматы ставит генератор страницы по серверной сетке (data-formats на #cp-formats):
+   Classic для пары включится, когда Prodigi подтвердит подвес лёжа (ORTUS_PLAN §6 M). */
+const FORMAT_LABEL = { print: 'Museum print', classic: 'Classic frame' };
+let FORMATS_ON_SALE = ['print', 'classic'];
 
 function blankPerson(dateStr, timeStr) {
   return { name: '', dateStr, timeStr, place: '', lat: null, lon: null, tz: 0, iana: 'UTC' };
@@ -67,6 +71,7 @@ function refresh() {
   document.getElementById('cp-price').textContent = p;
   document.getElementById('cp-buy').textContent = `Create our charts — ${p}`;
   document.getElementById('cp-colors').hidden = state.frameType !== 'classic';
+  document.getElementById('cp-formats').hidden = FORMATS_ON_SALE.length < 2;   // один формат — нечего выбирать
   document.querySelectorAll('#cp-formats .cfg-opt').forEach(b =>
     b.querySelector('.f-price').textContent = `£${PRICES[b.dataset.frametype][state.size].toFixed(2)}`);
   renderPreview();
@@ -105,7 +110,7 @@ function syncActive() {
    ⛔Пресет не трогает людей — только тему, формат, размер и цвет рамы. */
 function attachPresets() {
   const ok = {
-    theme: v => THEMES.some(t => t.id === v), frameType: v => v in PRICES,
+    theme: v => THEMES.some(t => t.id === v), frameType: v => FORMATS_ON_SALE.includes(v),
     size: v => SIZES.some(s => s[0] === v), frameColor: v => COLORS.includes(v),
   };
   document.querySelectorAll('[data-preset-frametype]').forEach(a => a.addEventListener('click', () => {
@@ -481,11 +486,13 @@ function attachControls() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  const fmtBox = document.getElementById('cp-formats');
+  FORMATS_ON_SALE = (fmtBox.dataset.formats || 'print,classic').split(',').filter(f => f in PRICES);
+  if (!FORMATS_ON_SALE.length) FORMATS_ON_SALE = ['print'];
   document.getElementById('cp-themes').innerHTML = THEMES.map((t, i) =>
     `<button type="button" class="cfg-opt${i === 0 ? ' active' : ''}" data-theme="${t.id}">${t.label}</button>`).join('');
-  document.getElementById('cp-formats').innerHTML =
-    `<button type="button" class="cfg-opt active" data-frametype="print">Museum print <span class="f-price"></span></button>` +
-    `<button type="button" class="cfg-opt" data-frametype="classic">Classic frame <span class="f-price"></span></button>`;
+  fmtBox.innerHTML = FORMATS_ON_SALE.map((f, i) =>
+    `<button type="button" class="cfg-opt${i === 0 ? ' active' : ''}" data-frametype="${f}">${FORMAT_LABEL[f]} <span class="f-price"></span></button>`).join('');
   document.getElementById('cp-sizes').innerHTML = SIZES.map(([v, l], i) =>
     `<button type="button" class="cfg-opt${i === 0 ? ' active' : ''}" data-size="${v}">${l}</button>`).join('');
   document.getElementById('cp-colors').innerHTML = COLORS.map(c =>
@@ -497,6 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
   restoreAttempt();     // ⚠️до восстановления формы: попытка принадлежит ИМЕННО этому черновику
   const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
   if (restoreDraft()) {
+    if (!FORMATS_ON_SALE.includes(state.frameType)) state.frameType = FORMATS_ON_SALE[0];   // черновик с форматом, которого больше нет
     WHO.forEach(w => {
       const p = state[w];
       set(`cp-${w}-date`, p.dateStr); set(`cp-${w}-time`, p.timeStr);
