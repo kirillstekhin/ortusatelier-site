@@ -69,6 +69,10 @@ footer .footlinks a:hover { color: var(--ink); }
   letter-spacing: .16em; text-transform: uppercase; color: var(--helper); transition: color .2s; }
 .frame-pick:hover figcaption { color: var(--ink); }
 @media (max-width: 760px) { .frames { grid-template-columns: 1fr; max-width: 320px; gap: 40px; } }
+/* ⛔[hidden] у рядов конфигуратора (20.09.2026): `.cfg-row { display: flex }` перебивал атрибут hidden браузера —
+   ряд цветов рамы (Black/Gold/Silver) был виден и при Museum print на всех трёх страницах, а у пары ещё и ряд
+   из одного формата. Найдено Playwright на превью пары. Правило общее — чинится для natal, family и couple разом. */
+.cfg-row[hidden] { display: none; }
 /* рама вокруг живого превью (Classic): ширину и файл ставит ortus.js */
 .np-pv.np-framed { box-shadow: 0 24px 48px rgba(0,0,0,.5); }
 .np-pv.np-framed svg { border-radius: 0; box-shadow: none; }
