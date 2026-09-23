@@ -102,9 +102,9 @@ export const ORTUS = {
     "couple/PRINT3040": { pence: 3499, price: "price_1UHo6FK6RIyYA8uFihAsoB3S" },
     "couple/PRINT4050": { pence: 3999, price: "price_1UHo6HK6RIyYA8uFI2ucDYYG" },
     "couple/PRINT5070": { pence: 4499, price: "price_1UHo6JK6RIyYA8uFbV5Aji1J" },
-    "couple/CLASSIC3040": { pence: 6999, price: "TBD" },
-    "couple/CLASSIC4050": { pence: 7999, price: "TBD" },
-    "couple/CLASSIC5070": { pence: 8999, price: "TBD" },
+    "couple/CLASSIC3040": { pence: 6999, price: "price_1UIpj0K6RIyYA8uFPpi8EIdQ" },
+    "couple/CLASSIC4050": { pence: 7999, price: "price_1UIpj2K6RIyYA8uFKth1Zgp0" },
+    "couple/CLASSIC5070": { pence: 8999, price: "price_1UIpj4K6RIyYA8uFGXZTTi8v" },
   },
   /* ⚠️Заполняется `tools/stripe_test_catalog.py` — он же переиспользует уже созданные
      объекты, чтобы повторные прогоны не плодили товары в тестовом режиме. */
@@ -124,9 +124,9 @@ export const ORTUS = {
     "couple/PRINT3040": { pence: 3499, price: "price_1UHo6aK6RIyYA8uFY5YGNAV1" },
     "couple/PRINT4050": { pence: 3999, price: "price_1UHo6cK6RIyYA8uFr2r7exse" },
     "couple/PRINT5070": { pence: 4499, price: "price_1UHo6eK6RIyYA8uFBDCkM8m0" },
-    "couple/CLASSIC3040": { pence: 6999, price: "TBD" },
-    "couple/CLASSIC4050": { pence: 7999, price: "TBD" },
-    "couple/CLASSIC5070": { pence: 8999, price: "TBD" },
+    "couple/CLASSIC3040": { pence: 6999, price: "price_1UIpjQK6RIyYA8uFLy8IZRYD" },
+    "couple/CLASSIC4050": { pence: 7999, price: "price_1UIpjSK6RIyYA8uFZCT1xbf9" },
+    "couple/CLASSIC5070": { pence: 8999, price: "price_1UIpjUK6RIyYA8uFLHTWakmP" },
   },
 };
 
