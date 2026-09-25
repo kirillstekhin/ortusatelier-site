@@ -170,12 +170,16 @@ function attachGeocode() {
     refresh();
   }
 
-  const preferred = rs => rs.find(r => r.country_code === 'GB') || rs[0];
+  /* 25.09.2026: сайт открыт для США — посетителю с американским часовым поясом первым US-результат,
+     остальным UK как было; явный клик по подсказке не трогаем. */
+  const HOME = (() => { try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    return /^America\//.test(tz) ? 'US' : 'GB'; } catch (e) { return 'GB'; } })();
+  const preferred = rs => rs.find(r => r.country_code === HOME) || rs[0];
 
   async function lookup(q) {
     const url = extra => `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en&format=json${extra}`;
     const get = async u => { try { const r = await fetch(u); return (await r.json()).results || []; } catch (e) { return []; } };
-    const [uk, world] = await Promise.all([get(url('&countryCode=GB')), get(url(''))]);
+    const [uk, world] = await Promise.all([get(url('&countryCode=' + HOME)), get(url(''))]);
     const seen = new Set(), out = [];
     for (const r of uk.concat(world)) {
       const k = r.latitude.toFixed(3) + ',' + r.longitude.toFixed(3);
