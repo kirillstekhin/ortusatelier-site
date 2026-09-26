@@ -602,7 +602,10 @@ async function createAttempt(env, aKey, attempt, cfg, item, content, fp, request
     // ⛔ОТМЕНА ВОЗВРАЩАЕТ ТУДА, ОТКУДА ПРИШЛИ. Общий `/` уводил покупателя Family на
     //   натальную страницу — заказ семьи просто терялся (найдено аудитом 13.09).
     cancel_url: `${origin}${CANCEL_PATH[content.product] || "/"}`,
+    // 26.09.2026: сайт открыт для США (решение юзера 25.09). Payment Links Ortus тут ни при чём —
+    // боевой путь оплаты идёт ЭТИМ обработчиком, и до правки он пускал только GB (найдено ревью).
     "shipping_address_collection[allowed_countries][0]": "GB",
+    "shipping_address_collection[allowed_countries][1]": "US",
     billing_address_collection: "required",
   };
   // ⛔КЛЮЧ ИДЕМПОТЕНТНОСТИ — ОТ ПОПЫТКИ, а не от id дизайна. Он обязан быть одинаковым у
