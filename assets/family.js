@@ -154,14 +154,27 @@ function fieldProblem(el, text) {
     note.setAttribute('role', 'alert');
     host.insertAdjacentElement('afterend', note);
     const watch = row ? [...row.querySelectorAll('input')] : [el];
-    const hide = () => { note.hidden = true; watch.forEach(i => i.removeAttribute('aria-invalid')); };
+    const hide = () => { note.hidden = true; note.style.display = 'none'; watch.forEach(i => i.removeAttribute('aria-invalid')); };
     watch.forEach(i => { i.addEventListener('input', hide); i.addEventListener('change', hide); });
   }
   note.textContent = text;
   note.hidden = false;
+  note.style.display = 'block';
   el.setAttribute('aria-invalid', 'true');
   el.focus({ preventScroll: true });
   note.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* подсказка снимается и без события input: место привязывается кликом по подсказке или автопривязкой
+   (value ставится кодом), а при удачной проверке перед сводкой гасим все подсказки разом. */
+function hideFieldProblem(el) {
+  const note = (el.closest('.mrow') || el).nextElementSibling;
+  if (note && note.classList.contains('cfg-field-problem')) { note.hidden = true; note.style.display = 'none'; }
+  el.removeAttribute('aria-invalid');
+}
+function clearFieldProblems() {
+  document.querySelectorAll('.cfg-field-problem').forEach(n => { n.hidden = true; n.style.display = 'none'; });
+  document.querySelectorAll('[aria-invalid]').forEach(i => i.removeAttribute('aria-invalid'));
 }
 
 const DRAFT_KEY = 'ortus_family_draft';
@@ -339,6 +352,7 @@ function attachControls() {
       return fieldProblem(document.querySelector('#fc-members .m-name'),
         'Please add at least two people — a first name and a date of birth for each.');
     }
+    clearFieldProblems();
     confirmSummary(members, fam => {
       /* ⛔БУФЕР ОБМЕНА БОЛЬШЕ НЕ ТРОГАЕМ. Копирование строки семьи было нужно, пока её
          приходилось вставлять в поле Stripe. Поля нет — значит это просто затирание
