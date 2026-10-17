@@ -295,6 +295,30 @@ function showProblem(text) {
 }
 function clearProblem() { if (problemBox) problemBox.hidden = true; }
 
+/* подсказка у поля (приёмка Q4, 17.10): пустое или непривязанное обязательное поле — покупатель видит
+   текстом, чего не хватает, а не только перенос фокуса. Прячется, как только поле меняется. Для строки
+   участника (.mrow) подсказка стоит под строкой, иначе — под самим полем, внутри его label. */
+function fieldProblem(el, text) {
+  const row = el.closest('.mrow');
+  const host = row || el;
+  let note = host.nextElementSibling;
+  if (!note || !note.classList.contains('cfg-field-problem')) {
+    note = document.createElement('span');
+    note.className = 'cfg-note cfg-field-problem';
+    note.style.cssText = 'display:block;color:#e0a94a;margin:.3rem 0 .5rem;font-size:.9rem;line-height:1.4';
+    note.setAttribute('role', 'alert');
+    host.insertAdjacentElement('afterend', note);
+    const watch = row ? [...row.querySelectorAll('input')] : [el];
+    const hide = () => { note.hidden = true; watch.forEach(i => i.removeAttribute('aria-invalid')); };
+    watch.forEach(i => { i.addEventListener('input', hide); i.addEventListener('change', hide); });
+  }
+  note.textContent = text;
+  note.hidden = false;
+  el.setAttribute('aria-invalid', 'true');
+  el.focus({ preventScroll: true });
+  note.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 const DRAFT_KEY = 'ortus_couple_draft';
 function saveDraft() {
   try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ ...state, bound: { ...placeBound }, _at: Date.now() })); } catch (e) {}
@@ -445,8 +469,13 @@ function confirmSummary(onKeep) {
 /* первое незаполненное поле: имя или место любого из двоих — туда и ведём */
 function firstGap() {
   for (const w of WHO) {
-    if (!state[w].name.trim()) return { el: document.getElementById(`cp-${w}-name`), hint: 'A first name for each of you' };
-    if (!placeBound[w]) return { el: document.getElementById(`cp-${w}-place`), hint: 'Birthplace first — the stars depend on it' };
+    const f = id => document.getElementById(`cp-${w}-${id}`);
+    if (!state[w].name.trim()) return { el: f('name'), hint: 'A first name for each of you', msg: 'Please add a first name for each of you — it goes beneath the chart.' };
+    if (!f('date').value) return { el: f('date'), msg: 'Please enter the date of birth — each chart is drawn for its own day.' };
+    if (!f('time').value) return { el: f('time'), msg: 'Please enter a time of birth — an approximate time is fine.' };
+    if (!placeBound[w]) return { el: f('place'), hint: 'Birthplace first — the stars depend on it', msg: f('place').value.trim()
+      ? 'We couldn\'t place that birthplace — try “town, country” and pick it from the list.'
+      : 'Please add the birthplace — the stars depend on it.' };
   }
   return null;
 }
@@ -479,10 +508,8 @@ function attachControls() {
     setTimeout(() => {
       const gap = firstGap();
       if (gap) {
-        gap.el.focus();
-        gap.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        gap.el.placeholder = gap.hint;
-        return;
+        if (gap.hint) gap.el.placeholder = gap.hint;
+        return fieldProblem(gap.el, gap.msg);
       }
       confirmSummary(() => goToCheckout(document.getElementById('cp-buy')));
     }, 300);
